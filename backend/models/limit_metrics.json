@@ -1,0 +1,21 @@
+{
+  "model_type": "GradientBoostingRegressor",
+  "features": [
+    "revenue",
+    "ebitda",
+    "cash_flow",
+    "dscr",
+    "debt_equity_ratio",
+    "collateral_value",
+    "collateral_coverage",
+    "bureau_score",
+    "industry_risk",
+    "cash_flow_stability",
+    "years_in_business"
+  ],
+  "r2_score": 0.9971,
+  "mae_log": 0.0885,
+  "mae_actual": 1061266.2,
+  "train_size": 1500,
+  "test_size": 500
+}
