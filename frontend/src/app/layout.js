@@ -1,4 +1,5 @@
 import { Inter } from "next/font/google";
+import Link from "next/link";
 import "./globals.css";
 
 const inter = Inter({ subsets: ["latin"] });
@@ -26,17 +27,17 @@ export default function RootLayout({ children }) {
                   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5 text-white"><path d="M12 2v20" /><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" /></svg>
                 </div>
                 <span className="font-bold text-lg tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white to-slate-400">
-                  NexCredit AI
+                  Intelli-Credit
                 </span>
                 <span className="ml-2 px-2 py-0.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-[10px] font-semibold text-blue-400 tracking-wider">
                   ENTERPRISE
                 </span>
               </div>
               <nav className="hidden md:flex items-center gap-6 text-sm font-medium text-slate-400">
-                <a href="/" className="text-white hover:text-blue-400 transition-colors">Dashboard</a>
-                <a href="#" className="hover:text-blue-400 transition-colors">Portfolio</a>
-                <a href="#" className="hover:text-blue-400 transition-colors">Models</a>
-                <a href="#" className="hover:text-blue-400 transition-colors">Audit Logs</a>
+                <Link href="/" className="text-white hover:text-blue-400 transition-colors">Dashboard</Link>
+                <Link href="/portfolio" className="hover:text-blue-400 transition-colors">Portfolio</Link>
+                <Link href="/models" className="hover:text-blue-400 transition-colors">Models</Link>
+                <Link href="#" className="hover:text-blue-400 transition-colors">Audit Logs</Link>
               </nav>
               <div className="flex items-center gap-4">
                 <div className="h-8 w-8 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center overflow-hidden">

@@ -1,8 +1,8 @@
-# NexCredit AI - Intelligent Corporate Underwriting
+# Intelli-Credit - Intelligent Corporate Underwriting
 
 > An autonomous AI Credit Officer designed to simulate how Tier-1 bank credit committees operate.
 
-NexCredit AI ingests structured and unstructured borrower financial data, conducts autonomous web-scale due diligence, computes an explainable composite risk score using Machine Learning ensembles, simulates stress tests, evaluating RAROC capital impact, and automatically generates a structured, downloadable Credit Appraisal Memo (CAM) in PDF format.
+Intelli-Credit ingests structured and unstructured borrower financial data, conducts autonomous web-scale due diligence, computes an explainable composite risk score using Machine Learning ensembles, simulates stress tests, evaluating RAROC capital impact, and automatically generates a structured, downloadable Credit Appraisal Memo (CAM) in PDF format.
 
 ## 🔥 Key Hackathon Differentiators
 

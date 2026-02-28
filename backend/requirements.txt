@@ -3,6 +3,7 @@ uvicorn
 python-multipart
 pdfplumber
 pytesseract
+pdf2image
 Pillow
 pandas
 numpy

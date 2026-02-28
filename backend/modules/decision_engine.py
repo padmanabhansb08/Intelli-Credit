@@ -77,6 +77,11 @@ def make_decision(pd_score: float, composite_risk: Dict[str, Any],
         if litigation:
             reasoning.append("Severe litigation exposure detected")
 
+    # Primary insight overrides & alerts (Qualitative Data)
+    primary_flags = web_research.get("primary_insights", {}).get("flags", [])
+    for flag in primary_flags:
+        reasoning.append(flag)
+
     # Top risk factors from SHAP
     top_factors = shap_explanation.get("top_5_factors", [])
     risk_factors = []

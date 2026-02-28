@@ -57,8 +57,53 @@ async def fetch_mca_filings(company_name: str) -> Dict[str, str]:
     return {"management_quality": "Average", "regulatory_risk": "Low"}
 
 
-def simulate_web_research(company_name: str, industry: str, revenue: float = 0, bureau_score: int = 700) -> Dict[str, Any]:
-    """Execute the full web crawling workflow using asyncio."""
+from textblob import TextBlob
+
+def analyze_primary_insights(site_visit: str = None, management_notes: str = None) -> Dict[str, Any]:
+    """Perform simple NLP sentiment analysis on qualitative credit officer notes."""
+    combined_text = f"{site_visit or ''} {management_notes or ''}".strip()
+    if not combined_text:
+        return {"sentiment": 0.0, "impact_bps": 0, "flags": []}
+
+    try:
+        sentiment = TextBlob(combined_text).sentiment.polarity
+    except Exception:
+        # Fallback if textblob not strictly installed, though it's in reqs
+        positive_words = ["good", "strong", "positive", "growth", "recovery", "excellent", "healthy", "improving"]
+        negative_words = ["poor", "weak", "concern", "drop", "decline", "bad", "litigation", "risk", "default", "issue"]
+        
+        lower_text = combined_text.lower()
+        pos_count = sum(1 for w in positive_words if w in lower_text)
+        neg_count = sum(1 for w in negative_words if w in lower_text)
+        
+        total = pos_count + neg_count
+        if total == 0:
+            sentiment = 0.0
+        else:
+            sentiment = (pos_count - neg_count) / total
+
+    # Arbitrary rule: strong positive sentiment reduces risk premium by 50bps, strong negative adds 100bps
+    impact_bps = 0
+    flags = []
+    
+    if sentiment > 0.3:
+        impact_bps = -50
+        flags.append("Positive Management/Site Visit Sentiment")
+    elif sentiment < -0.2:
+        impact_bps = 100
+        flags.append("Warning: Negative Qualitative Due Diligence")
+        
+    return {
+        "sentiment": round(sentiment, 2),
+        "impact_bps": impact_bps,
+        "flags": flags,
+        "raw_text": combined_text
+    }
+
+
+def simulate_web_research(company_name: str, industry: str, revenue: float = 0, bureau_score: int = 700,
+                          site_visit_insights: str = None, management_interview_notes: str = None) -> Dict[str, Any]:
+    """Execute the full web crawling workflow using asyncio and integrate primary insights."""
     
     # Run async web crawlers
     loop = asyncio.new_event_loop()
@@ -74,6 +119,9 @@ def simulate_web_research(company_name: str, industry: str, revenue: float = 0, 
     litigation_flag = court_task.result()
     mca_data = mca_task.result()
     
+    # Analyze Primary Qualitative Insights
+    primary_insights_analysis = analyze_primary_insights(site_visit_insights, management_interview_notes)
+    
     macro = INDUSTRY_MACRO.get(industry, {"growth_rate": 0.05, "volatility": 0.15, "default_rate_sector": 0.03, "outlook": "Stable", "risk_factor": 0.3})
     
     # Compute base ESG from available public data
@@ -87,6 +135,12 @@ def simulate_web_research(company_name: str, industry: str, revenue: float = 0, 
         + 0.20 * macro["risk_factor"] * 100
         + 0.15 * ({"Low": 10, "Medium": 40, "High": 80}.get(mca_data["regulatory_risk"], 30))
     ), 2)
+    
+    # NLP Insights strongly affect the Web Risk (acting as a qualitative override multiplier)
+    if primary_insights_analysis["sentiment"] > 0.3:
+        web_risk_score = max(0.0, web_risk_score * 0.8) # 20% reduction in external risk
+    elif primary_insights_analysis["sentiment"] < -0.2:
+        web_risk_score = min(100.0, web_risk_score * 1.3) # 30% increase in external risk
 
     return {
         "litigation_flag": litigation_flag,
@@ -102,5 +156,6 @@ def simulate_web_research(company_name: str, industry: str, revenue: float = 0, 
         "news_headlines": news_data["news_headlines"],
         "web_risk_score": web_risk_score,
         "industry_macro": macro,
+        "primary_insights": primary_insights_analysis,
         "related_party_connections": []
     }

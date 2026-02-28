@@ -1,22 +1,23 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import Response
 from modules.cam_generator import generate_cam_content
 from utils.pdf_builder import build_cam_pdf
+from routers.analyze import get_tenant
 import os
 
 router = APIRouter()
 
-# Avoid circular imports by lazy loading the DEMO_SESSIONS dictionary.
+# Avoid circular imports by lazy loading the ANALYSIS_DB dictionary.
 # In a real app we'd query a database.
-def get_session(analysis_id):
-    from routers.analyze import DEMO_SESSIONS
-    return DEMO_SESSIONS.get(analysis_id)
+def get_session(tenant_id, analysis_id):
+    from routers.analyze import ANALYSIS_DB
+    return ANALYSIS_DB.get(tenant_id, {}).get(analysis_id)
 
 
 @router.get("/download/{analysis_id}")
-async def download_cam_pdf(analysis_id: str):
+async def download_cam_pdf(analysis_id: str, tenant: dict = Depends(get_tenant)):
     """Generate and return the CAM PDF for a given analysis."""
-    session = get_session(analysis_id)
+    session = get_session(tenant["tenant_id"], analysis_id)
     if not session or "full_result" not in session:
         # Try to load from feature store just to mock data if session lost
         from modules.feature_store import load_features
