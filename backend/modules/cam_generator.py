@@ -43,7 +43,9 @@ def generate_cam_content(analysis_data: Dict[str, Any]) -> Dict[str, str]:
         f"  • Recommended Credit Limit: ₹{rec_limit:,.0f}\n"
         f"  • Risk Premium: {premium.get('spread', 0)*10000:.0f} bps over base rate\n"
         f"  • Total Lending Rate: {premium.get('total_rate', 0):.2%}\n"
-        f"  • DSCR: {dscr:.2f}x\n"
+        f"  • DSCR: {dscr:.2f}x\n\n"
+        
+        f"{decision.get('five_c_synthesis', 'Five C synthesis pending.')}\n"
     )
 
     # 2. Character & Capacity (Borrower Overview)
