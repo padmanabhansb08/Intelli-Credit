@@ -229,6 +229,8 @@ async def run_full_analysis(
     save_features(req.analysis_id, features)
 
     # 3. Simulate Web-Scale Research
+    from modules.web_research import simulate_web_research, summarize_company_profile
+    
     web_research_data = simulate_web_research(
         company_name=req.customer.name,
         industry=req.customer.industry,
@@ -236,6 +238,11 @@ async def run_full_analysis(
         bureau_score=features.get("bureau_score", 700),
         site_visit_insights=req.writeup.business_overview, # Proxy SWOT/Writeup to web-scale context
         management_interview_notes=req.writeup.swot
+    )
+    
+    # 3.5 LLM Simulator (Indian Corporate Credit Analyst)
+    company_profile_summary = summarize_company_profile(
+        req.writeup.business_overview or f"{req.customer.name} operates in {req.customer.industry}"
     )
 
     # 4. ML Inference
@@ -295,6 +302,9 @@ async def run_full_analysis(
         recommended_limit=recommended_limit,
         risk_premium=risk_premium
     )
+    
+    # 7.5 Inject summarized company profile directly into decision payload for CAM routing
+    decision_result["company_summary"] = company_profile_summary
 
     # 8. Governance & Audit Trail
     audit_trail = generate_audit_trail(
