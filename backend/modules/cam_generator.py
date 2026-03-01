@@ -70,7 +70,9 @@ def generate_cam_content(analysis_data: Dict[str, Any]) -> Dict[str, str]:
         f"The borrower operates in the {company_summary.get('industry_sector', industry)} sector with {years} years of operational history. "
         f"The bureau score of {features.get('bureau_score', 'N/A')} indicates "
         f"{'strong' if features.get('bureau_score', 0) > 750 else 'adequate' if features.get('bureau_score', 0) > 650 else 'weak'} "
-        f"credit history."
+        f"credit history.\n\n"
+        
+        f"{features.get('qualitative_assessment', 'Qualitative Due-Diligence pending.')}\n"
     )
 
     # 3. Industry Analysis & External Intelligence

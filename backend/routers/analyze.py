@@ -263,6 +263,13 @@ async def run_full_analysis(
         req.writeup.business_overview or f"{req.customer.name} operates in {req.customer.industry}"
     )
 
+    # 3.6 Phase 5 Qualitative Due Diligence (Senior Credit Manager)
+    from modules.llm_qualitative_analyzer import analyze_qualitative_inputs
+    features["qualitative_assessment"] = analyze_qualitative_inputs(
+        site_visit_notes=req.writeup.business_overview,
+        management_notes=req.writeup.swot
+    )
+
     # 4. ML Inference
     try:
         pd_score, scaled_features = predict_pd(features)
