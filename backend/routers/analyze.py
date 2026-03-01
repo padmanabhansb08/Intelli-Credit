@@ -254,6 +254,10 @@ async def run_full_analysis(
         management_interview_notes=req.writeup.swot
     )
     
+    # 3.2 External Web Intelligence Simulator (Phase 4)
+    from modules.llm_external_analyzer import analyze_external_intelligence
+    web_research_data["external_intelligence_summary"] = analyze_external_intelligence(web_research_data)
+    
     # 3.5 LLM Simulator (Indian Corporate Credit Analyst)
     company_profile_summary = summarize_company_profile(
         req.writeup.business_overview or f"{req.customer.name} operates in {req.customer.industry}"

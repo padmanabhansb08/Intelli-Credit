@@ -73,7 +73,7 @@ def generate_cam_content(analysis_data: Dict[str, Any]) -> Dict[str, str]:
         f"credit history."
     )
 
-    # 3. Industry Analysis
+    # 3. Industry Analysis & External Intelligence
     macro = web.get("industry_macro", {})
     sections["industry_analysis"] = (
         f"Industry: {industry}\n"
@@ -82,14 +82,8 @@ def generate_cam_content(analysis_data: Dict[str, Any]) -> Dict[str, str]:
         f"Sector Volatility: {macro.get('volatility', 0):.1%}\n"
         f"Sector Default Rate: {macro.get('default_rate_sector', 0):.2%}\n"
         f"Regulatory Risk: {web.get('regulatory_risk', 'N/A')}\n\n"
-        f"The {industry} sector is currently experiencing "
-        f"{'positive momentum' if web.get('industry_outlook') == 'Growth' else 'stable conditions' if web.get('industry_outlook') == 'Stable' else 'challenging conditions'} "
-        f"with a growth rate of {macro.get('growth_rate', 0):.1%}. "
-        f"The sector default rate of {macro.get('default_rate_sector', 0):.2%} "
-        f"{'is below' if macro.get('default_rate_sector', 0) < 0.03 else 'is at' if macro.get('default_rate_sector', 0) < 0.04 else 'exceeds'} "
-        f"the cross-industry average.\n\n"
-        f"News Sentiment Analysis indicates {web.get('sentiment_category', 'neutral')} outlook "
-        f"with a sentiment score of {web.get('sentiment_score', 0):.3f}."
+        
+        f"{web.get('external_intelligence_summary', 'External web intelligence summary pending.')}\n"
     )
 
     # 4. Financial Analysis
