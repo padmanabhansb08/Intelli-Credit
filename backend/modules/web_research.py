@@ -13,28 +13,72 @@ INDUSTRY_MACRO = {
     "Retail": {"growth_rate": 0.03, "volatility": 0.18, "default_rate_sector": 0.04, "outlook": "Stable", "risk_factor": 0.5},
 }
 
+import urllib.parse
+from textblob import TextBlob
+
 async def fetch_news_sentiment(company_name: str) -> Dict[str, Any]:
-    """Crawl web for recent news articles and compute sentiment."""
-    # Scaffold for actual web scraping using httpx and bs4
+    """Crawl web for recent news articles and compute sentiment using live data."""
+    headlines = []
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            # e.g., crawling a news aggregator for company mentions
-            response = await client.get(f"https://news.google.com/search?q={company_name}", headers={"User-Agent": "Mozilla/5.0"})
+        # Encode company name for URL
+        query = urllib.parse.quote_plus(f"{company_name} business finance")
+        rss_url = f"https://news.google.com/rss/search?q={query}&hl=en-IN&gl=IN&ceid=IN:en"
+        
+        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
+            response = await client.get(rss_url)
             if response.status_code == 200:
-                soup = BeautifulSoup(response.text, "html.parser")
-                # Extract headlines (class names vary, using generic placeholder)
-                headlines_elements = soup.find_all("a", class_="JtKRv")
-                headlines = [h.text for h in headlines_elements[:5]] if headlines_elements else ["No major news found for entity."]
-            else:
-                headlines = ["Unable to fetch news from generic portal."]
+                soup = BeautifulSoup(response.text, "xml") # Parse RSS feed
+                items = soup.find_all("item")
+                
+                for item in items[:5]: # Get top 5 headlines
+                    title = item.find("title")
+                    if title and title.text:
+                        # Clean title (sometimes contains source at the end - "Source")
+                        clean_title = title.text.split(" - ")[0]
+                        headlines.append(clean_title)
+            
+            if not headlines:
+                headlines = [f"No major recent news indexed for {company_name}."]
+                
     except Exception as e:
-        print(f"News scraping failed: {e}")
-        headlines = ["News scraping module unavailable - connection failed."]
+        print(f"Live News scraping failed: {e}")
+        headlines = [f"News scraping crawler unavailable for {company_name}."]
+
+    # Calculate Sentiment using TextBlob
+    scored_headlines = []
+    total_sentiment = 0.0
+    
+    for h in headlines:
+        if "No major recent news" in h or "crawler unavailable" in h:
+            scored_headlines.append({"headline": h, "sentiment": "neutral", "source": "Web Crawler"})
+            continue
+            
+        try:
+            blob = TextBlob(h)
+            polarity = blob.sentiment.polarity
+            total_sentiment += polarity
+            
+            cat = "neutral"
+            if polarity > 0.1: cat = "positive"
+            if polarity < -0.1: cat = "negative"
+            
+            scored_headlines.append({"headline": h, "sentiment": cat, "score": round(polarity, 2), "source": "Live RSS Web Crawler"})
+        except Exception:
+            scored_headlines.append({"headline": h, "sentiment": "neutral", "source": "Web Crawler"})
+
+    # Average sentiment across found articles
+    avg_score = 0.0
+    sentiment_category = "neutral"
+    
+    if len(headlines) > 0 and len(scored_headlines) > 0 and "No major" not in scored_headlines[0]["headline"]:
+        avg_score = total_sentiment / len(headlines)
+        if avg_score > 0.1: sentiment_category = "positive"
+        elif avg_score < -0.1: sentiment_category = "negative"
 
     return {
-        "sentiment_score": 0.1,  # Extracted via external NLP model (e.g. HuggingFace pipeline in production)
-        "sentiment_category": "neutral",
-        "news_headlines": [{"headline": h, "sentiment": "neutral", "source": "Web Crawler"} for h in headlines]
+        "sentiment_score": round(avg_score, 3),
+        "sentiment_category": sentiment_category,
+        "news_headlines": scored_headlines
     }
 
 async def fetch_ecourts_disputes(company_name: str) -> bool:
