@@ -228,6 +228,10 @@ async def run_full_analysis(
 
     save_features(req.analysis_id, features)
 
+    # 2.5 Structured Financials LLM Simulator (Revenue, Cash Flow, Red Flags)
+    from modules.llm_financial_analyzer import analyze_structured_financials
+    features["financial_llm_assessment"] = analyze_structured_financials(features)
+
     # 3. Simulate Web-Scale Research
     from modules.web_research import simulate_web_research, summarize_company_profile
     

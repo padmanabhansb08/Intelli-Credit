@@ -104,15 +104,8 @@ def generate_cam_content(analysis_data: Dict[str, Any]) -> Dict[str, str]:
         f"Cash Flow: ₹{features.get('cash_flow', 0):,.0f}\n"
         f"DSCR: {dscr:.2f}x\n"
         f"Cash Flow Stability: {features.get('cash_flow_stability', 0):.1%}\n\n"
-        f"Financial Assessment:\n"
-        f"The borrower demonstrates {'strong' if features.get('ebitda_margin', 0) > 0.2 else 'moderate' if features.get('ebitda_margin', 0) > 0.1 else 'weak'} "
-        f"profitability with an EBITDA margin of {features.get('ebitda_margin', 0):.1%}. "
-        f"The debt service coverage ratio of {dscr:.2f}x "
-        f"{'provides adequate cushion' if dscr > 1.5 else 'meets minimum requirements' if dscr > 1.0 else 'is below the minimum threshold'} "
-        f"for debt servicing. "
-        f"The debt-to-equity ratio of {features.get('debt_equity_ratio', 0):.2f}x indicates "
-        f"{'conservative' if features.get('debt_equity_ratio', 0) < 1 else 'moderate' if features.get('debt_equity_ratio', 0) < 2 else 'elevated'} "
-        f"leverage."
+        
+        f"{features.get('financial_llm_assessment', 'Standard financial assessment logic pending.')}\n"
     )
 
     # 5. Risk Assessment
