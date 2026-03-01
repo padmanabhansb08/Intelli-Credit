@@ -46,8 +46,10 @@ def generate_cam_content(analysis_data: Dict[str, Any]) -> Dict[str, str]:
         f"  • DSCR: {dscr:.2f}x\n"
     )
 
-    # 2. Borrower Overview
+    # 2. Character & Capacity (Borrower Overview)
     years = analysis_data.get("years_in_business", "N/A")
+    company_summary = decision.get("company_summary", {})
+    
     sections["borrower_overview"] = (
         f"Company Name: {company}\n"
         f"Industry: {industry}\n"
@@ -55,9 +57,17 @@ def generate_cam_content(analysis_data: Dict[str, Any]) -> Dict[str, str]:
         f"Bureau Score: {features.get('bureau_score', 'N/A')}\n"
         f"Past Defaults: {features.get('num_past_defaults', 0)}\n"
         f"Existing Exposure: ₹{features.get('existing_exposure', 0):,.0f}\n\n"
+        
+        f"--- AI Business Overview Synthesis ---\n"
+        f"Business Model: {company_summary.get('business_model', 'N/A')}\n"
+        f"Revenue Drivers: {company_summary.get('revenue_drivers', 'N/A')}\n"
+        f"Key Dependencies: {company_summary.get('key_dependencies', 'N/A')}\n"
+        f"Assessed Risk Level: {company_summary.get('risk_level', 'N/A')}\n"
+        f"--------------------------------------\n\n"
+        
         f"Management Quality Assessment: {web.get('management_quality', 'N/A')}\n"
         f"ESG Score: {web.get('esg_score', 'N/A')}/100\n\n"
-        f"The borrower operates in the {industry} sector with {years} years of operational history. "
+        f"The borrower operates in the {company_summary.get('industry_sector', industry)} sector with {years} years of operational history. "
         f"The bureau score of {features.get('bureau_score', 'N/A')} indicates "
         f"{'strong' if features.get('bureau_score', 0) > 750 else 'adequate' if features.get('bureau_score', 0) > 650 else 'weak'} "
         f"credit history."
