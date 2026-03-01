@@ -231,6 +231,16 @@ async def run_full_analysis(
     # 2.5 Structured Financials LLM Simulator (Revenue, Cash Flow, Red Flags)
     from modules.llm_financial_analyzer import analyze_structured_financials
     features["financial_llm_assessment"] = analyze_structured_financials(features)
+    
+    # 2.6 Unstructured Document Phase 3 Analyzer (Litigation, Liabilities, Defaults)
+    from modules.llm_risk_analyzer import analyze_unstructured_risks
+    
+    # Attempt to pull RAW TEXT directly from PDF/OCR parser if available, otherwise fallback to SWOT input
+    raw_document_text = financials.get("raw_text", "")
+    if not str(raw_document_text).strip():
+         raw_document_text = req.writeup.swot or req.writeup.business_overview or req.customer.name
+         
+    features["unstructured_risk_assessment"] = analyze_unstructured_risks(raw_document_text)
 
     # 3. Simulate Web-Scale Research
     from modules.web_research import simulate_web_research, summarize_company_profile

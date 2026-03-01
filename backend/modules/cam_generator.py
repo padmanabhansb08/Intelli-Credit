@@ -128,6 +128,8 @@ def generate_cam_content(analysis_data: Dict[str, Any]) -> Dict[str, str]:
             f"  {i}. {feat_name}: {factor.get('feature_value', 0):.4f} "
             f"({'Increases' if factor.get('shap_value', 0) > 0 else 'Decreases'} Risk)\n"
         )
+        
+    sections["risk_assessment"] += "\n" + features.get("unstructured_risk_assessment", "")
 
     # 6. Collateral Evaluation
     sections["collateral_evaluation"] = (
