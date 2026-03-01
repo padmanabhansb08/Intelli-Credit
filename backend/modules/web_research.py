@@ -203,3 +203,67 @@ def simulate_web_research(company_name: str, industry: str, revenue: float = 0, 
         "primary_insights": primary_insights_analysis,
         "related_party_connections": []
     }
+
+def summarize_company_profile(company_text: str) -> Dict[str, str]:
+    """
+    LLM Simulator: Summarizes a raw company profile into 5 core credit appraisal fields
+    using TextBlob and keyword heuristics (simulating an Indian Corporate Credit Analyst).
+    """
+    if not company_text or len(company_text.strip()) < 10:
+        return {
+            "business_model": "Insufficient data provided.",
+            "industry_sector": "Unknown",
+            "revenue_drivers": "Unknown",
+            "key_dependencies": "Unknown",
+            "risk_level": "Medium"
+        }
+
+    lower_text = company_text.lower()
+    
+    # 1. Industry Heuristics
+    industry = "Manufacturing & Industrials"
+    if any(k in lower_text for k in ["software", "technology", "saas", "it services", "platform"]):
+        industry = "IT Services & Technology"
+    elif any(k in lower_text for k in ["retail", "consumer", "fmcg", "store", "ecommerce"]):
+        industry = "Retail & Consumer Goods"
+    elif any(k in lower_text for k in ["finance", "bank", "nbfc", "lending", "credit"]):
+        industry = "BFSI (Banking & Finance)"
+        
+    # 2. Business Model & Revenue Drivers extraction
+    try:
+        blob = TextBlob(company_text)
+        sentences = blob.sentences
+        
+        biz_model_sents = [s for s in sentences if any(w in s.lower() for w in ["manufactures", "provides", "sells", "operates", "platform", "b2b", "b2c", "service"])]
+        rev_driver_sents = [s for s in sentences if any(w in s.lower() for w in ["revenue", "generate", "sales", "subscription", "margin", "fee", "growth"])]
+        dep_sents = [s for s in sentences if any(w in s.lower() for w in ["relies", "dependent", "supplier", "vendor", "partner", "raw material", "regulatory"])]
+        
+        business_model = str(biz_model_sents[0]) if biz_model_sents else "Operates standard corporate business model based on text context."
+        revenue_drivers = str(rev_driver_sents[0]) if rev_driver_sents else "Driven by primary core operations and sales."
+        key_dependencies = str(dep_sents[0]) if dep_sents else "Dependent on macro-economic stability and standard supply chains."
+        
+    except Exception:
+        business_model = "Extracting primary business model logic failed."
+        revenue_drivers = "Standard revenue generation operations."
+        key_dependencies = "Supply chain and standard market demand."
+
+    # 3. Risk Level (Sentiment + Volatility Flags)
+    risk_level = "Medium"
+    risk_flags = ["litigation", "decline", "debt", "volatile", "loss", "resign", "penalty", "default"]
+    safety_flags = ["stable", "profitable", "growth", "leader", "strong", "cash", "dividend"]
+    
+    risk_count = sum(1 for w in risk_flags if w in lower_text)
+    safe_count = sum(1 for w in safety_flags if w in lower_text)
+    
+    if risk_count > safe_count and risk_count >= 2:
+        risk_level = "High"
+    elif safe_count > risk_count * 2:
+        risk_level = "Low"
+
+    return {
+        "business_model": business_model.replace('\n', ' ').strip(),
+        "industry_sector": industry,
+        "revenue_drivers": revenue_drivers.replace('\n', ' ').strip(),
+        "key_dependencies": key_dependencies.replace('\n', ' ').strip(),
+        "risk_level": risk_level
+    }
