@@ -27,30 +27,31 @@ export default function Home() {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
         <div className="lg:col-span-7 space-y-6">
           <div className="glass-card rounded-2xl p-8 border border-white/5 relative overflow-hidden group hover:border-blue-500/30 transition-all cursor-pointer"
-            onClick={() => router.push('/proposal/new')}>
+            onClick={() => router.push('/studio')}>
             <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 via-teal-400 to-emerald-500 opacity-80" />
 
             <div className="flex items-start justify-between">
               <div>
                 <h2 className="text-2xl font-semibold mb-2 flex items-center gap-3 text-white">
-                  <span className="p-2 rounded-lg bg-blue-500/10 text-blue-400 border border-blue-500/20">
-                    <PlusCircle className="w-6 h-6" />
+                  <span className="p-2 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shadow-[0_0_15px_rgba(16,185,129,0.2)]">
+                    <Activity className="w-6 h-6" />
                   </span>
-                  Start New Proposal
+                  Decision Engine Studio
                 </h2>
-                <p className="text-slate-400 ml-14">Initiate a comprehensive multi-stage credit origination workflow. Captures customer financials, facility structuring, Qualitative SWOT, and Concentration exposures.</p>
+                <p className="text-slate-300 ml-14">Enter the interactive Canvas Studio. Visually design, deploy, and backtest complex credit decisioning graphs using drag-and-drop integration nodes.</p>
               </div>
-              <div className="w-10 h-10 rounded-full bg-slate-800 flex items-center justify-center group-hover:bg-blue-600 transition-colors">
-                <ArrowRight className="w-5 h-5 text-white" />
+              <div className="w-10 h-10 rounded-full bg-slate-800 flex items-center justify-center group-hover:bg-emerald-600 transition-colors shadow-lg">
+                <ArrowRight className="w-5 h-5 text-white group-hover:translate-x-1 transition-transform" />
               </div>
             </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="glass-card rounded-2xl p-6 border border-slate-700/50 hover:border-slate-500 transition-all cursor-pointer">
-              <Database className="w-8 h-8 text-amber-500 mb-4" />
-              <h3 className="text-lg font-bold text-white mb-1">Resume Drafts</h3>
-              <p className="text-sm text-slate-400">Continue a previously saved initiation or enrichment pipeline.</p>
+            <div className="glass-card rounded-2xl p-6 border border-slate-700/50 hover:border-slate-500 transition-all cursor-pointer"
+              onClick={() => router.push('/proposal/new')}>
+              <PlusCircle className="w-8 h-8 text-blue-500 mb-4" />
+              <h3 className="text-lg font-bold text-white mb-1">Manual Proposal</h3>
+              <p className="text-sm text-slate-400">Initiate a classic step-by-step credit origination data entry form.</p>
             </div>
 
             <div className="glass-card rounded-2xl p-6 border border-slate-700/50 hover:border-slate-500 transition-all cursor-pointer"

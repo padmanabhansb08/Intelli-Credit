@@ -9,38 +9,63 @@ const initialNodes = [
     {
         id: 'start-1',
         type: 'triggerNode',
-        position: { x: 250, y: 100 },
-        data: { label: 'Start Application' },
+        position: { x: 300, y: 50 },
+        data: { label: 'Inbound Proposal PDF' },
+    },
+    {
+        id: 'doc-1',
+        type: 'documentClassificationNode',
+        position: { x: 190, y: 200 },
+        data: {
+            label: '10-K & Income Statement',
+            confidence: 94,
+            extractedFields: [
+                { key: 'Corporation', value: 'Tesla Inc.' },
+                { key: 'GrossMargin', value: '18.2%' },
+                { key: 'EBITDA', value: '$14.8B' }
+            ]
+        }
     },
     {
         id: 'bureau-1',
         type: 'integrationNode',
-        position: { x: 250, y: 250 },
+        position: { x: 230, y: 400 },
         data: {
-            label: 'Credit Bureau',
-            connection: 'Credit Bureau',
-            fieldAssignment: 'data.credit_report',
-            warning: true
+            label: 'Equifax Commercial',
+            connection: 'Risk API Gateway',
+            warning: true,
+            warningDetails: 'Retrying connection... latency 405ms'
         },
     },
     {
         id: 'condition-1',
         type: 'conditionNode',
-        position: { x: 250, y: 400 },
+        position: { x: 250, y: 560 },
         data: {
-            label: 'Condition Rule',
-            assignmentDetails: 'Assignment',
-            warning: true,
-            rules: [],
-            targetField: 'data.credit_decision',
-            defaultValue: ''
+            label: 'DSCR > 1.25',
+            assignmentDetails: 'if (EBITDA / DebtService > 1.25)'
+        },
+    },
+    {
+        id: 'explain-1',
+        type: 'explainableAINode',
+        position: { x: 50, y: 730 },
+        data: {
+            label: 'TreeSHAP Attributions',
+            shapValues: [
+                { name: "Debt-to-Income", impact: 1.84 },
+                { name: "Years in Business", impact: -0.65 },
+                { name: "Revolving Util", impact: 0.92 }
+            ]
         },
     }
 ];
 
 const initialEdges = [
-    { id: 'e1-2', source: 'start-1', target: 'bureau-1', type: 'smoothstep' },
-    { id: 'e2-3', source: 'bureau-1', target: 'condition-1', type: 'smoothstep' }
+    { id: 'e1-2', source: 'start-1', target: 'doc-1', type: 'smoothstep', animated: true },
+    { id: 'e2-3', source: 'doc-1', target: 'bureau-1', type: 'smoothstep', animated: true },
+    { id: 'e3-4', source: 'bureau-1', target: 'condition-1', type: 'smoothstep' },
+    { id: 'e4-5', source: 'condition-1', sourceHandle: 'false', target: 'explain-1', type: 'smoothstep', animated: true, style: { stroke: '#f43f5e', strokeWidth: 2 } }
 ];
 
 const useWorkflowStore = create((set, get) => ({

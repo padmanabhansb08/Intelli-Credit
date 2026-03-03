@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Activity, ShieldAlert, Cpu, Database, ActivitySquare, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { Activity, ShieldAlert, Cpu, Database, ActivitySquare, AlertTriangle, CheckCircle2, TrendingDown, ArrowUpRight, ArrowDownRight, RefreshCw } from "lucide-react";
 import { getSystemMetrics } from "@/lib/api";
 
 export default function ModelsPage() {
@@ -170,6 +170,74 @@ export default function ModelsPage() {
                             <p className="text-xs text-slate-400 leading-relaxed">
                                 The ML engine explicitly ignores gender, religion, and racial proxies. Models are tested monthly against the standardized Indian demographic benchmark dataset.
                             </p>
+                        </div>
+                    </div>
+                </div>
+
+
+                {/* Concept Drift Monitoring */}
+                <div className="glass-card p-6 rounded-2xl border border-slate-700/50 md:col-span-2">
+                    <div className="flex justify-between items-start mb-6">
+                        <div>
+                            <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                                <TrendingDown className="w-5 h-5 text-amber-400" />
+                                Continuous Calibration & Concept Drift
+                            </h2>
+                            <p className="text-sm text-slate-400 mt-1">Real-time monitoring of Population Stability Index (PSI) and feature distributions.</p>
+                        </div>
+                        <button className="px-3 py-1.5 rounded-lg text-xs font-bold border border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700 flex items-center gap-1.5 transition-colors">
+                            <RefreshCw className="w-3.5 h-3.5" /> Recalibrate
+                        </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        {/* PSI Metric */}
+                        <div className="bg-[#0d1117] p-5 rounded-xl border border-slate-800 flex flex-col justify-between">
+                            <div>
+                                <h3 className="text-sm font-semibold text-slate-400">Global PSI</h3>
+                                <div className="flex items-end gap-2 mt-1">
+                                    <span className="text-3xl font-mono text-emerald-400">0.08</span>
+                                    <span className="text-xs text-emerald-500 font-bold mb-1 flex items-center"><ArrowDownRight className="w-3 h-3" /> 0.02</span>
+                                </div>
+                            </div>
+                            <div className="mt-4 pt-3 border-t border-slate-800/50">
+                                <span className="text-[10px] uppercase tracking-wider text-slate-500 font-bold">Status: <span className="text-emerald-500">Stable (&lt;0.1)</span></span>
+                            </div>
+                        </div>
+
+                        {/* KS Statistic */}
+                        <div className="bg-[#0d1117] p-5 rounded-xl border border-slate-800 flex flex-col justify-between">
+                            <div>
+                                <h3 className="text-sm font-semibold text-slate-400">KS Statistic</h3>
+                                <div className="flex items-end gap-2 mt-1">
+                                    <span className="text-3xl font-mono text-blue-400">0.42</span>
+                                    <span className="text-xs text-amber-500 font-bold mb-1 flex items-center"><ArrowUpRight className="w-3 h-3" /> 0.05</span>
+                                </div>
+                            </div>
+                            <div className="mt-4 pt-3 border-t border-slate-800/50">
+                                <span className="text-[10px] uppercase tracking-wider text-slate-500 font-bold">Threshold: <span className="text-slate-400">0.30 - 0.50</span></span>
+                            </div>
+                        </div>
+
+                        {/* Feature Drift Alerts */}
+                        <div className="md:col-span-2 bg-[#0d1117] p-0 rounded-xl border border-slate-800 overflow-hidden">
+                            <div className="p-3 border-b border-slate-800 bg-slate-900/50">
+                                <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Top Drifting Features (30 Days)</span>
+                            </div>
+                            <div className="flex flex-col">
+                                <div className="flex items-center justify-between p-3 border-b border-slate-800/50 hover:bg-slate-800/30 transition-colors">
+                                    <span className="text-sm text-slate-300 font-medium">Interest Rate Environment (Macro)</span>
+                                    <span className="text-xs font-bold text-amber-500 bg-amber-500/10 px-2 py-0.5 rounded-md border border-amber-500/20">PSI: 0.14</span>
+                                </div>
+                                <div className="flex items-center justify-between p-3 border-b border-slate-800/50 hover:bg-slate-800/30 transition-colors">
+                                    <span className="text-sm text-slate-300 font-medium">Revolving Utilization (%)</span>
+                                    <span className="text-xs font-bold text-amber-500 bg-amber-500/10 px-2 py-0.5 rounded-md border border-amber-500/20">PSI: 0.11</span>
+                                </div>
+                                <div className="flex items-center justify-between p-3 hover:bg-slate-800/30 transition-colors">
+                                    <span className="text-sm text-slate-300 font-medium">Debt-to-Income Ratio</span>
+                                    <span className="text-xs font-bold text-emerald-500 bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-500/20">PSI: 0.06</span>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>

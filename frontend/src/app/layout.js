@@ -1,5 +1,6 @@
 import { Inter } from "next/font/google";
 import Link from "next/link";
+import { Plus } from "lucide-react";
 import "./globals.css";
 
 const inter = Inter({ subsets: ["latin"] });
@@ -35,12 +36,19 @@ export default function RootLayout({ children }) {
               </div>
               <nav className="hidden md:flex items-center gap-6 text-sm font-medium text-slate-400">
                 <Link href="/" className="text-white hover:text-blue-400 transition-colors">Dashboard</Link>
-                <Link href="/portfolio" className="hover:text-blue-400 transition-colors">Portfolio</Link>
-                <Link href="/models" className="hover:text-blue-400 transition-colors">Models</Link>
-                <Link href="#" className="hover:text-blue-400 transition-colors">Audit Logs</Link>
+                <Link href="/studio" className="hover:text-blue-400 transition-colors flex items-center gap-2">Decision Studio</Link>
+                <Link href="/portfolio" className="hover:text-blue-400 transition-colors">Active Portfolio</Link>
+                <Link href="/review" className="hover:text-blue-400 transition-colors">Review Station</Link>
               </nav>
               <div className="flex items-center gap-4">
-                <div className="h-8 w-8 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center overflow-hidden">
+                <Link
+                  href="/studio"
+                  className="hidden md:flex items-center gap-2 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white px-4 py-2 rounded-full text-sm font-bold shadow-lg shadow-blue-500/20 transition-all transform hover:scale-105"
+                >
+                  <Plus className="w-4 h-4" />
+                  New Workflow
+                </Link>
+                <div className="h-8 w-8 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center overflow-hidden cursor-pointer">
                   <div className="w-4 h-4 rounded-full bg-slate-500 object-cover" />
                 </div>
               </div>
