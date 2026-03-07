@@ -1,6 +1,7 @@
-import axios from 'axios';
+﻿import axios from 'axios';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api';
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api';
+export const STUDIO_API_BASE_URL = `${API_BASE_URL}/studio`;
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -8,6 +9,25 @@ const api = axios.create({
     'Content-Type': 'application/json',
   },
 });
+
+export const buildStudioWebSocketUrl = (path) => {
+  const socketUrl = new URL(API_BASE_URL);
+  socketUrl.protocol = socketUrl.protocol === 'https:' ? 'wss:' : 'ws:';
+  socketUrl.pathname = path;
+  socketUrl.search = '';
+  socketUrl.hash = '';
+  return socketUrl.toString();
+};
+
+export const estimateWorkflowCost = async (payload) => {
+  const response = await api.post('/studio/estimate_cost', payload);
+  return response.data;
+};
+
+export const startWorkflowExecution = async (payload) => {
+  const response = await api.post('/studio/executions', payload);
+  return response.data;
+};
 
 export const uploadDocument = async (file, docType) => {
   const formData = new FormData();
@@ -63,3 +83,4 @@ export const downloadCamPdf = (analysisId) => {
 };
 
 export default api;
+

@@ -1,4 +1,4 @@
-fastapi
+﻿fastapi
 uvicorn
 python-multipart
 pdfplumber
@@ -21,3 +21,7 @@ aiofiles
 databricks-sql-connector
 httpx
 beautifulsoup4
+sqlalchemy>=2.0
+cryptography>=43.0
+psycopg[binary]>=3.2
+
