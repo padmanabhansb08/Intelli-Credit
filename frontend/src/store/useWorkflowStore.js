@@ -1,5 +1,11 @@
 ﻿import { create } from 'zustand';
 import { addEdge, applyEdgeChanges, applyNodeChanges } from 'reactflow';
+import {
+  clearWorkflowInitialInput as clearWorkflowInitialInputStorage,
+  deepMerge,
+  persistWorkflowInitialInput,
+  readWorkflowInitialInput,
+} from '@/lib/ingestion';
 
 const DEFAULT_EXECUTION_CONFIG = {
   maxRetries: 0,
@@ -39,6 +45,7 @@ const hydrateNode = (node) => ({
 });
 
 const hydrateNodes = (nodes) => nodes.map(hydrateNode);
+const getLastSelectedId = (items) => items.filter((item) => item.selected).at(-1)?.id || null;
 
 const resetNodeRuntime = (node) => ({
   ...node,
@@ -109,17 +116,17 @@ const initialNodes = hydrateNodes([
   {
     id: 'start-1',
     type: 'triggerNode',
-    position: { x: 300, y: 50 },
+    position: { x: 320, y: 80 },
     data: {
-      label: 'Inbound Proposal PDF',
+      label: 'Inbound Proposal Payload',
     },
   },
   {
     id: 'doc-1',
     type: 'documentClassificationNode',
-    position: { x: 190, y: 220 },
+    position: { x: 220, y: 240 },
     data: {
-      label: '10-K & Income Statement',
+      label: 'Databricks Document Parse',
       confidence: 94,
       extractedFields: [
         { key: 'Corporation', value: 'Tesla Inc.' },
@@ -131,15 +138,22 @@ const initialNodes = hydrateNodes([
   {
     id: 'bureau-1',
     type: 'integrationNode',
-    position: { x: 230, y: 420 },
+    position: { x: 260, y: 450 },
     data: {
       label: 'Equifax Commercial',
       connection: 'Risk API Gateway',
-      requestBody: '{\n  "company": "{{ nodes.doc_1.fields.Corporation }}",\n  "requestedAmount": "{{ input.requested_amount }}"\n}',
+      fieldAssignment: 'data.credit_report',
+      requestBody: '{\n  "company": "{{ input.applicant_name }}",\n  "revenue": "{{ input.extracted.financial_documents.revenue }}"\n}',
       mockResponse: {
         bureau: 'equifax',
         riskScore: 742,
         approvedLimit: 300000,
+      },
+      outputMapping: {
+        credit_report: {
+          riskScore: '{{ response.riskScore }}',
+          approvedLimit: '{{ response.approvedLimit }}',
+        },
       },
       warning: true,
       warningDetails: 'Retry policy is configured for transient downstream latency.',
@@ -148,11 +162,11 @@ const initialNodes = hydrateNodes([
   {
     id: 'condition-1',
     type: 'conditionNode',
-    position: { x: 250, y: 620 },
+    position: { x: 300, y: 670 },
     data: {
       label: 'Risk score > 700',
-      expression: '{{ nodes.bureau_1.response.riskScore }} > 700',
-      assignmentDetails: '{{ nodes.bureau_1.response.riskScore }} > 700',
+      expression: '{{ nodes.bureau_1.credit_report.riskScore }} > 700',
+      assignmentDetails: '{{ nodes.bureau_1.credit_report.riskScore }} > 700',
       targetField: 'data.credit_decision',
       defaultValue: 'REVIEW',
     },
@@ -160,7 +174,7 @@ const initialNodes = hydrateNodes([
   {
     id: 'explain-1',
     type: 'explainableAINode',
-    position: { x: 50, y: 790 },
+    position: { x: 110, y: 850 },
     data: {
       label: 'TreeSHAP Attributions',
       shapValues: [
@@ -187,10 +201,14 @@ const initialEdges = [
   },
 ];
 
+const removeConnectedEdges = (edges, nodeIds) =>
+  edges.filter((edge) => !nodeIds.has(edge.source) && !nodeIds.has(edge.target));
+
 const useWorkflowStore = create((set, get) => ({
   nodes: initialNodes,
   edges: initialEdges,
   selectedNodeId: null,
+  selectedEdgeId: null,
   isMappingModalOpen: false,
   mappingConfig: null,
   currentExecutionId: null,
@@ -198,8 +216,27 @@ const useWorkflowStore = create((set, get) => ({
   executionLogs: [],
   websocketStatus: 'disconnected',
   lastExecutionError: null,
+  workflowInitialInput: readWorkflowInitialInput(),
 
-  setSelectedNodeId: (id) => set({ selectedNodeId: id }),
+  setSelectedNodeId: (id) => set({ selectedNodeId: id, selectedEdgeId: id ? null : get().selectedEdgeId }),
+  setSelectedEdgeId: (id) => set({ selectedEdgeId: id, selectedNodeId: id ? null : get().selectedNodeId }),
+
+  syncSelection: ({ nodes = get().nodes, edges = get().edges }) => set({
+    selectedNodeId: getLastSelectedId(nodes),
+    selectedEdgeId: getLastSelectedId(edges),
+  }),
+
+  setWorkflowInitialInput: (payload) => {
+    persistWorkflowInitialInput(payload);
+    set({ workflowInitialInput: payload });
+  },
+
+  hydrateWorkflowInitialInput: () => set({ workflowInitialInput: readWorkflowInitialInput() }),
+
+  clearWorkflowInitialInput: () => {
+    clearWorkflowInitialInputStorage();
+    set({ workflowInitialInput: null });
+  },
 
   openMappingModal: (config) => set({
     isMappingModalOpen: true,
@@ -212,15 +249,41 @@ const useWorkflowStore = create((set, get) => ({
   }),
 
   onNodesChange: (changes) => {
+    const nextNodes = hydrateNodes(applyNodeChanges(changes, get().nodes));
     set({
-      nodes: hydrateNodes(applyNodeChanges(changes, get().nodes)),
+      nodes: nextNodes,
+      selectedNodeId: getLastSelectedId(nextNodes),
     });
   },
 
   onEdgesChange: (changes) => {
+    const nextEdges = applyEdgeChanges(changes, get().edges);
     set({
-      edges: applyEdgeChanges(changes, get().edges),
+      edges: nextEdges,
+      selectedEdgeId: getLastSelectedId(nextEdges),
     });
+  },
+
+  onNodesDelete: (deletedNodes) => {
+    const deletedNodeIds = new Set(deletedNodes.map((node) => node.id));
+    set((state) => {
+      const nextEdges = removeConnectedEdges(state.edges, deletedNodeIds);
+      const edgeIds = new Set(nextEdges.map((edge) => edge.id));
+      return {
+        nodes: state.nodes.filter((node) => !deletedNodeIds.has(node.id)),
+        edges: nextEdges,
+        selectedNodeId: state.selectedNodeId && deletedNodeIds.has(state.selectedNodeId) ? null : state.selectedNodeId,
+        selectedEdgeId: state.selectedEdgeId && !edgeIds.has(state.selectedEdgeId) ? null : state.selectedEdgeId,
+      };
+    });
+  },
+
+  onEdgesDelete: (deletedEdges) => {
+    const deletedEdgeIds = new Set(deletedEdges.map((edge) => edge.id));
+    set((state) => ({
+      edges: state.edges.filter((edge) => !deletedEdgeIds.has(edge.id)),
+      selectedEdgeId: state.selectedEdgeId && deletedEdgeIds.has(state.selectedEdgeId) ? null : state.selectedEdgeId,
+    }));
   },
 
   onConnect: (connection) => {
@@ -236,9 +299,44 @@ const useWorkflowStore = create((set, get) => ({
   },
 
   addNode: (node) => {
+    const hydratedNode = hydrateNode(node);
     set({
-      nodes: [...get().nodes, hydrateNode(node)],
+      nodes: [...get().nodes, hydratedNode],
+      selectedNodeId: hydratedNode.id,
+      selectedEdgeId: null,
     });
+  },
+
+  deleteNodeById: (nodeId) => {
+    const deletedNodeIds = new Set([nodeId]);
+    set((state) => {
+      const nextEdges = removeConnectedEdges(state.edges, deletedNodeIds);
+      const edgeIds = new Set(nextEdges.map((edge) => edge.id));
+      return {
+        nodes: state.nodes.filter((node) => node.id !== nodeId),
+        edges: nextEdges,
+        selectedNodeId: state.selectedNodeId === nodeId ? null : state.selectedNodeId,
+        selectedEdgeId: state.selectedEdgeId && !edgeIds.has(state.selectedEdgeId) ? null : state.selectedEdgeId,
+      };
+    });
+  },
+
+  deleteEdgeById: (edgeId) => {
+    set((state) => ({
+      edges: state.edges.filter((edge) => edge.id !== edgeId),
+      selectedEdgeId: state.selectedEdgeId === edgeId ? null : state.selectedEdgeId,
+    }));
+  },
+
+  deleteSelectedElements: () => {
+    const { selectedNodeId, selectedEdgeId } = get();
+    if (selectedNodeId) {
+      get().deleteNodeById(selectedNodeId);
+      return;
+    }
+    if (selectedEdgeId) {
+      get().deleteEdgeById(selectedEdgeId);
+    }
   },
 
   updateNodeData: (nodeId, dataUpdate) => {
@@ -248,25 +346,15 @@ const useWorkflowStore = create((set, get) => ({
           return node;
         }
 
-        const nextData = {
-          ...node.data,
-          ...dataUpdate,
+        const nextData = deepMerge(node.data || {}, dataUpdate || {});
+        nextData.executionConfig = {
+          ...DEFAULT_EXECUTION_CONFIG,
+          ...(nextData.executionConfig || {}),
         };
-
-        if (dataUpdate.executionConfig) {
-          nextData.executionConfig = {
-            ...DEFAULT_EXECUTION_CONFIG,
-            ...(node.data?.executionConfig || {}),
-            ...dataUpdate.executionConfig,
-          };
-        }
-
-        if (dataUpdate.runtime) {
-          nextData.runtime = {
-            ...buildRuntime(node.data?.runtime),
-            ...dataUpdate.runtime,
-          };
-        }
+        nextData.runtime = {
+          ...buildRuntime(node.data?.runtime),
+          ...(nextData.runtime || {}),
+        };
 
         return hydrateNode({
           ...node,

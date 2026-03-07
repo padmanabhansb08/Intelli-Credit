@@ -1,4 +1,5 @@
 ﻿import axios from 'axios';
+import { DOCUMENT_KIND_CONFIG } from '@/lib/ingestion';
 
 export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api';
 export const STUDIO_API_BASE_URL = `${API_BASE_URL}/studio`;
@@ -29,10 +30,13 @@ export const startWorkflowExecution = async (payload) => {
   return response.data;
 };
 
-export const uploadDocument = async (file, docType) => {
+export const uploadDocument = async (file, docType, analysisId = null) => {
   const formData = new FormData();
   formData.append('file', file);
   formData.append('doc_type', docType);
+  if (analysisId) {
+    formData.append('analysis_id', analysisId);
+  }
 
   const response = await api.post('/upload', formData, {
     headers: {
@@ -40,6 +44,18 @@ export const uploadDocument = async (file, docType) => {
     },
   });
   return response.data;
+};
+
+export const uploadIngestionDocument = async ({ file, documentKind, analysisId = null }) => {
+  const config = DOCUMENT_KIND_CONFIG[documentKind] || DOCUMENT_KIND_CONFIG.annual_report;
+  const response = await uploadDocument(file, config.backendType, analysisId);
+  return {
+    ...response,
+    documentKind,
+    backendType: config.backendType,
+    channel: config.channel,
+    fileName: file.name,
+  };
 };
 
 export const runAnalysis = async (analysisId, payload) => {
@@ -78,9 +94,36 @@ export const getAnalyses = async () => {
   return response.data;
 };
 
-export const downloadCamPdf = (analysisId) => {
-  window.open(`${API_BASE_URL}/cam/download/${analysisId}`, '_blank');
+export const generateCamPdf = async (analysisId) => {
+  const response = await api.post(`/cam/generate/${analysisId}`, null, {
+    responseType: 'blob',
+  });
+  return {
+    blob: response.data,
+    filename: parseFilename(response.headers['content-disposition']) || `CAM_${analysisId}.pdf`,
+  };
+};
+
+export const downloadCamPdf = async (analysisId) => {
+  const { blob, filename } = await generateCamPdf(analysisId);
+  const url = window.URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  window.URL.revokeObjectURL(url);
+  return filename;
+};
+
+const parseFilename = (contentDisposition) => {
+  if (!contentDisposition) {
+    return null;
+  }
+
+  const match = contentDisposition.match(/filename=\"?([^\";]+)\"?/i);
+  return match ? match[1] : null;
 };
 
 export default api;
-

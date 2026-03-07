@@ -1,4 +1,4 @@
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException, BackgroundTasks, Depends, Security
+﻿from fastapi import APIRouter, UploadFile, File, Form, HTTPException, BackgroundTasks, Depends, Security
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 from typing import Optional, Dict, Any, List
@@ -128,11 +128,12 @@ class AnalyzeRequest(BaseModel):
 async def upload_document(
     file: UploadFile = File(...),
     doc_type: str = Form(...),  # 'financial_pdf', 'bank_csv', 'bureau_json'
+    analysis_id: Optional[str] = Form(None),
     tenant: Dict = Depends(get_tenant)
 ):
     """Upload and parse a document, returning a temporary analysis_id."""
     content = await file.read()
-    analysis_id = str(uuid.uuid4())
+    analysis_id = analysis_id or str(uuid.uuid4())
     tenant_id = tenant["tenant_id"]
 
     if doc_type == "financial_pdf":
@@ -394,3 +395,4 @@ async def get_all_drafts(tenant: Dict = Depends(get_tenant)):
             })
             
     return {"drafts": drafts_list}
+

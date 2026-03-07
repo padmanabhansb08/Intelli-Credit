@@ -12,18 +12,16 @@ import ReactFlow, { Background, Controls, ReactFlowProvider } from 'reactflow';
 import 'reactflow/dist/style.css';
 import {
   Coins,
-  FileCheck,
-  LayoutGrid,
-  Layers,
-  Link,
-  Lock,
-  Network,
+  DatabaseZap,
   Play,
-  Share2,
+  Trash2,
+  Workflow,
+  X,
 } from 'lucide-react';
 import NextLink from 'next/link';
 import DataMappingModal from '@/components/modals/DataMappingModal';
 import ExecutionPanel from '@/components/studio/ExecutionPanel';
+import NodeLibrary from '@/components/studio/NodeLibrary';
 import PropertiesSidebar from '@/components/studio/PropertiesSidebar';
 import {
   ConditionNode,
@@ -47,24 +45,133 @@ const nodeTypes = {
   explainableAINode: ExplainableAINode,
 };
 
+const createNodeId = (type) => `${type}-${(typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2, 11)).slice(0, 8)}`;
+
+const buildNodeBlueprint = (type, position) => {
+  const baseNode = {
+    id: createNodeId(type),
+    type,
+    position,
+    data: {
+      label: 'New Node',
+    },
+  };
+
+  switch (type) {
+    case 'triggerNode':
+      return {
+        ...baseNode,
+        data: {
+          label: 'Inbound Proposal Trigger',
+          triggerType: 'manual',
+        },
+      };
+    case 'documentClassificationNode':
+      return {
+        ...baseNode,
+        data: {
+          label: 'Databricks Document Parse',
+          confidence: 96,
+          extractedFields: [
+            { key: 'Applicant', value: 'ACME Corp' },
+            { key: 'RequestedLimit', value: '250000' },
+          ],
+        },
+      };
+    case 'integrationNode':
+      return {
+        ...baseNode,
+        data: {
+          label: 'Integration API',
+          connection: 'Risk API Gateway',
+          fieldAssignment: 'data.credit_report',
+          requestBody: '{\n  "company": "{{ input.applicant_name }}",\n  "requestedAmount": "{{ input.requested_amount }}"\n}',
+          mockResponse: {
+            riskScore: 742,
+            approvedLimit: 300000,
+          },
+          outputMapping: {
+            credit_report: {
+              riskScore: '{{ response.riskScore }}',
+              approvedLimit: '{{ response.approvedLimit }}',
+            },
+          },
+          fieldMappings: [
+            {
+              path: 'riskScore',
+              sourceSegments: ['riskScore'],
+              keyName: 'credit_report.riskScore',
+              sampleValue: '742',
+            },
+            {
+              path: 'approvedLimit',
+              sourceSegments: ['approvedLimit'],
+              keyName: 'credit_report.approvedLimit',
+              sampleValue: '300000',
+            },
+          ],
+        },
+      };
+    case 'conditionNode':
+      return {
+        ...baseNode,
+        data: {
+          label: 'Risk Score Check',
+          expression: '{{ nodes.integrationNode.credit_report.riskScore }} > 700',
+          assignmentDetails: '{{ nodes.integrationNode.credit_report.riskScore }} > 700',
+          targetField: 'data.credit_decision',
+          defaultValue: 'REVIEW',
+        },
+      };
+    case 'explainableAINode':
+      return {
+        ...baseNode,
+        data: {
+          label: 'TreeSHAP Attributions',
+          shapValues: [
+            { name: 'Debt-to-Income', impact: 1.84 },
+            { name: 'Years in Business', impact: -0.65 },
+            { name: 'Revolving Util', impact: 0.92 },
+          ],
+        },
+      };
+    default:
+      return baseNode;
+  }
+};
+
+const isEditableTarget = (target) => {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+
+  return Boolean(target.closest('input, textarea, select, [contenteditable="true"]'));
+};
+
 export default function DecisionStudio() {
   const {
     applyExecutionEvent,
     beginExecution,
+    clearWorkflowInitialInput,
     currentExecutionId,
     edges,
     executionLogs,
     executionStatus,
+    hydrateWorkflowInitialInput,
     isMappingModalOpen,
     nodes,
     resetExecutionState,
+    selectedEdgeId,
+    selectedNodeId,
     setWebSocketStatus,
     websocketStatus,
+    workflowInitialInput,
   } = useWorkflowStore();
   const [isDeploying, setIsDeploying] = useState(false);
   const [costEstimate, setCostEstimate] = useState(null);
   const [isEstimating, setIsEstimating] = useState(false);
   const [isTracePanelOpen, setIsTracePanelOpen] = useState(true);
+  const [isLibraryCollapsed, setIsLibraryCollapsed] = useState(false);
   const socketRef = useRef(null);
   const deferredLogs = useDeferredValue(executionLogs);
 
@@ -75,9 +182,11 @@ export default function DecisionStudio() {
   }, [applyExecutionEvent]);
 
   useEffect(() => {
-    return () => {
-      socketRef.current?.close();
-    };
+    hydrateWorkflowInitialInput();
+  }, [hydrateWorkflowInitialInput]);
+
+  useEffect(() => () => {
+    socketRef.current?.close();
   }, []);
 
   useEffect(() => {
@@ -98,36 +207,33 @@ export default function DecisionStudio() {
       }
     };
 
-    const timer = setTimeout(estimate, 500);
+    const timer = setTimeout(estimate, 350);
     return () => clearTimeout(timer);
   }, [nodes, edges]);
 
-  const openExecutionSocket = useCallback(
-    (websocketPath) => {
-      socketRef.current?.close();
-      const socket = new WebSocket(buildStudioWebSocketUrl(websocketPath));
-      socketRef.current = socket;
-      setWebSocketStatus('connecting');
+  const openExecutionSocket = useCallback((websocketPath) => {
+    socketRef.current?.close();
+    const socket = new WebSocket(buildStudioWebSocketUrl(websocketPath));
+    socketRef.current = socket;
+    setWebSocketStatus('connecting');
 
-      socket.onopen = () => {
-        setWebSocketStatus('connected');
-      };
+    socket.onopen = () => {
+      setWebSocketStatus('connected');
+    };
 
-      socket.onmessage = (message) => {
-        const parsed = JSON.parse(message.data);
-        handleExecutionEvent(parsed);
-      };
+    socket.onmessage = (message) => {
+      const parsed = JSON.parse(message.data);
+      handleExecutionEvent(parsed);
+    };
 
-      socket.onerror = () => {
-        setWebSocketStatus('error');
-      };
+    socket.onerror = () => {
+      setWebSocketStatus('error');
+    };
 
-      socket.onclose = () => {
-        setWebSocketStatus('disconnected');
-      };
-    },
-    [handleExecutionEvent, setWebSocketStatus],
-  );
+    socket.onclose = () => {
+      setWebSocketStatus('disconnected');
+    };
+  }, [handleExecutionEvent, setWebSocketStatus]);
 
   const handleDeploy = async () => {
     if (!nodes.length) {
@@ -143,6 +249,7 @@ export default function DecisionStudio() {
         edges,
         workflow_id: workflowId,
         workflow_name: 'Decision Studio Draft',
+        initial_input: workflowInitialInput || {},
       });
 
       beginExecution({ executionId: response.execution_id });
@@ -157,10 +264,15 @@ export default function DecisionStudio() {
     }
   };
 
-  const onDragStart = (event, nodeType) => {
-    event.dataTransfer.setData('application/reactflow', nodeType);
-    event.dataTransfer.effectAllowed = 'move';
-  };
+  const selectedElementLabel = selectedNodeId
+    ? 'Delete selected node'
+    : selectedEdgeId
+      ? 'Delete selected edge'
+      : null;
+
+  const payloadSummary = workflowInitialInput?.documents?.length
+    ? `${workflowInitialInput.documents.length} uploaded document payload${workflowInitialInput.documents.length > 1 ? 's' : ''}`
+    : 'No uploaded trigger payload';
 
   return (
     <div className="fixed inset-0 z-[100] bg-[#F8FAFC] flex flex-col font-sans overflow-hidden">
@@ -172,7 +284,7 @@ export default function DecisionStudio() {
         </div>
 
         <div className="flex items-center gap-4">
-          <div className="flex flex-col items-end mr-4">
+          <div className="flex flex-col items-end mr-2">
             <div className="flex items-center gap-1.5 text-slate-700">
               <Coins className="w-4 h-4 text-amber-500" />
               <span className="text-sm font-bold">
@@ -187,78 +299,72 @@ export default function DecisionStudio() {
           <button
             onClick={handleDeploy}
             disabled={isDeploying || isEstimating}
-            className="bg-[#254EDD] hover:bg-blue-800 disabled:opacity-50 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-colors shadow-sm"
+            className="bg-[#254EDD] hover:bg-blue-800 disabled:opacity-50 text-white px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-colors shadow-sm"
           >
-            {isDeploying ? 'Starting...' : <><Play className="w-3.5 h-3.5 fill-current" /> Deploy workflow</>}
+            <Play className="w-4 h-4 fill-current" />
+            {isDeploying ? 'Starting...' : 'Deploy workflow'}
           </button>
         </div>
       </header>
 
-      <div className="flex flex-1 overflow-hidden relative">
-        <div className="absolute top-4 left-4 z-10 flex flex-col gap-2">
-          <div className="bg-white rounded-lg shadow-sm border border-slate-200 flex flex-col p-1">
-            <button className="p-2 text-slate-400 hover:bg-slate-50 hover:text-slate-700 rounded-md"><Lock className="w-4 h-4" /></button>
-            <button className="p-2 bg-blue-50 text-blue-600 rounded-md"><LayoutGrid className="w-4 h-4" /></button>
-            <button className="p-2 text-slate-400 hover:bg-slate-50 hover:text-slate-700 rounded-md"><Link className="w-4 h-4" /></button>
+      <div className="flex flex-1 overflow-hidden">
+        <NodeLibrary
+          collapsed={isLibraryCollapsed}
+          onToggle={() => setIsLibraryCollapsed((current) => !current)}
+          onDragStart={(event, nodeType) => {
+            event.dataTransfer.setData('application/reactflow', nodeType);
+            event.dataTransfer.effectAllowed = 'move';
+          }}
+        />
+
+        <div className="flex-1 relative overflow-hidden bg-[#F4F5F7]">
+          <div className="absolute top-4 left-4 z-20 flex flex-col gap-3 max-w-md">
+            <div className="rounded-[24px] border border-slate-200 bg-white/95 backdrop-blur-sm px-4 py-3 shadow-sm">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Workflow State</p>
+                  <p className="text-sm font-semibold text-slate-900 mt-1">Decision Studio Draft</p>
+                  <p className="text-xs text-slate-500 mt-1">
+                    {currentExecutionId ? `Latest run ${currentExecutionId}` : 'Manual trigger mode'}
+                  </p>
+                </div>
+                <span className="px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide bg-slate-100 text-slate-600">
+                  {executionStatus}
+                </span>
+              </div>
+            </div>
+
+            <div className="rounded-[24px] border border-cyan-200 bg-cyan-50/90 px-4 py-3 shadow-sm">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="flex items-center gap-2 text-cyan-900">
+                    <DatabaseZap className="w-4 h-4" />
+                    <p className="text-sm font-semibold">Trigger payload</p>
+                  </div>
+                  <p className="text-sm text-cyan-900 mt-1">{payloadSummary}</p>
+                  {workflowInitialInput?.applicant_name && (
+                    <p className="text-xs text-cyan-800 mt-2">Applicant: {workflowInitialInput.applicant_name}</p>
+                  )}
+                </div>
+                {workflowInitialInput && (
+                  <button
+                    onClick={clearWorkflowInitialInput}
+                    className="w-8 h-8 rounded-xl bg-white/80 text-cyan-800 hover:bg-white transition-colors flex items-center justify-center"
+                    aria-label="Clear trigger payload"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
 
-          <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-3 px-4 w-80 flex items-center justify-between mt-2">
-            <div>
-              <span className="text-sm font-semibold text-slate-700">Decision Studio Draft</span>
-              <p className="text-[11px] text-slate-400 mt-1">{currentExecutionId ? `Latest run ${currentExecutionId}` : 'Manual trigger mode'}</p>
-            </div>
-            <span className="px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide bg-slate-100 text-slate-600">
-              {executionStatus}
-            </span>
-          </div>
+          {selectedElementLabel && (
+            <StudioSelectionToolbar label={selectedElementLabel} />
+          )}
 
-          <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-2 flex gap-2 items-center mt-2 w-max shadow-md z-50">
-            <div
-              className="p-2 hover:bg-slate-100 rounded-md cursor-grab active:cursor-grabbing border border-transparent hover:border-slate-200 flex items-center justify-center bg-emerald-50 shadow-sm"
-              onDragStart={(event) => onDragStart(event, 'triggerNode')}
-              draggable
-              title="Drag Start Node"
-            >
-              <Play className="w-5 h-5 text-emerald-600 fill-current" />
-            </div>
-            <div
-              className="p-2 hover:bg-slate-100 rounded-md cursor-grab active:cursor-grabbing border border-transparent hover:border-slate-200 flex items-center justify-center bg-purple-50 shadow-sm"
-              onDragStart={(event) => onDragStart(event, 'documentClassificationNode')}
-              draggable
-              title="Drag AI Document Extraction Node"
-            >
-              <FileCheck className="w-5 h-5 text-purple-600" />
-            </div>
-            <div
-              className="p-2 hover:bg-slate-100 rounded-md cursor-grab active:cursor-grabbing border border-transparent hover:border-slate-200 flex items-center justify-center bg-teal-50 shadow-sm"
-              onDragStart={(event) => onDragStart(event, 'integrationNode')}
-              draggable
-              title="Drag Integration Node"
-            >
-              <Layers className="w-5 h-5 text-teal-600" />
-            </div>
-            <div
-              className="p-2 hover:bg-slate-100 rounded-md cursor-grab active:cursor-grabbing border border-transparent hover:border-slate-200 flex items-center justify-center bg-indigo-50 shadow-sm"
-              onDragStart={(event) => onDragStart(event, 'conditionNode')}
-              draggable
-              title="Drag Condition Node"
-            >
-              <Network className="w-5 h-5 text-indigo-600" />
-            </div>
-            <div
-              className="p-2 hover:bg-slate-100 rounded-md cursor-grab active:cursor-grabbing border border-transparent hover:border-slate-200 flex items-center justify-center bg-amber-50 shadow-sm"
-              onDragStart={(event) => onDragStart(event, 'explainableAINode')}
-              draggable
-              title="Drag Explainable AI Node"
-            >
-              <Share2 className="w-5 h-5 text-amber-600" />
-            </div>
-          </div>
-        </div>
-
-        <div className="flex-1 bg-[#F4F5F7] h-full">
           <ReactFlowProvider>
-            <DnDFlowContainer />
+            <DnDFlowContainer buildNodeBlueprint={buildNodeBlueprint} />
           </ReactFlowProvider>
         </div>
 
@@ -279,18 +385,72 @@ export default function DecisionStudio() {
   );
 }
 
-function DnDFlowContainer() {
+function StudioSelectionToolbar({ label }) {
+  const { deleteSelectedElements } = useWorkflowStore();
+
+  return (
+    <div className="absolute top-4 right-4 z-20">
+      <button
+        onClick={deleteSelectedElements}
+        className="inline-flex items-center gap-2 rounded-full border border-rose-200 bg-white px-4 py-2 text-sm font-semibold text-rose-600 shadow-sm hover:bg-rose-50 transition-colors"
+      >
+        <Trash2 className="w-4 h-4" /> {label}
+      </button>
+    </div>
+  );
+}
+
+function DnDFlowContainer({ buildNodeBlueprint }) {
   const [reactFlowInstance, setReactFlowInstance] = useState(null);
-  const { nodes, edges, onNodesChange, onEdgesChange, onConnect, setSelectedNodeId, addNode } = useWorkflowStore();
+  const {
+    addNode,
+    deleteSelectedElements,
+    edges,
+    nodes,
+    onConnect,
+    onEdgesChange,
+    onEdgesDelete,
+    onNodesChange,
+    onNodesDelete,
+    selectedEdgeId,
+    selectedNodeId,
+    setSelectedEdgeId,
+    setSelectedNodeId,
+    syncSelection,
+  } = useWorkflowStore();
+
+  useEffect(() => {
+    const handleKeyDown = (event) => {
+      if ((event.key !== 'Backspace' && event.key !== 'Delete') || isEditableTarget(event.target)) {
+        return;
+      }
+
+      if (!selectedNodeId && !selectedEdgeId) {
+        return;
+      }
+
+      event.preventDefault();
+      deleteSelectedElements();
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [deleteSelectedElements, selectedEdgeId, selectedNodeId]);
 
   const onNodeClick = useCallback((event, node) => {
     event.stopPropagation();
     setSelectedNodeId(node.id);
   }, [setSelectedNodeId]);
 
+  const onEdgeClick = useCallback((event, edge) => {
+    event.stopPropagation();
+    setSelectedEdgeId(edge.id);
+  }, [setSelectedEdgeId]);
+
   const onPaneClick = useCallback(() => {
     setSelectedNodeId(null);
-  }, [setSelectedNodeId]);
+    setSelectedEdgeId(null);
+  }, [setSelectedEdgeId, setSelectedNodeId]);
 
   const onDragOver = useCallback((event) => {
     event.preventDefault();
@@ -299,66 +459,22 @@ function DnDFlowContainer() {
 
   const onDrop = useCallback((event) => {
     event.preventDefault();
-    if (!reactFlowInstance) return;
+    if (!reactFlowInstance) {
+      return;
+    }
 
     const type = event.dataTransfer.getData('application/reactflow');
-    if (!type) return;
+    if (!type) {
+      return;
+    }
 
     const position = reactFlowInstance.screenToFlowPosition({
       x: event.clientX,
       y: event.clientY,
     });
 
-    let newLabel = 'New Node';
-    let extraData = {};
-
-    if (type === 'triggerNode') {
-      newLabel = 'Trigger Event';
-    } else if (type === 'documentClassificationNode') {
-      newLabel = 'Proposal Parser';
-      extraData = {
-        confidence: 96,
-        extractedFields: [
-          { key: 'Applicant', value: 'ACME Corp' },
-          { key: 'Requested', value: '$250,000' },
-        ],
-      };
-    } else if (type === 'explainableAINode') {
-      newLabel = 'TreeSHAP Attributions';
-      extraData = {
-        shapValues: [
-          { name: 'Debt-to-Income', impact: 1.84 },
-          { name: 'Years in Business', impact: -0.65 },
-          { name: 'Revolving Util', impact: 0.92 },
-        ],
-      };
-    } else if (type === 'integrationNode') {
-      newLabel = 'Integration API';
-      extraData = {
-        connection: 'Select Connection...',
-        requestBody: '{\n  "score": "{{ nodes.doc_1.fields.GrossMargin }}"\n}',
-      };
-    } else if (type === 'conditionNode') {
-      newLabel = 'Condition Rule';
-      extraData = {
-        expression: '{{ nodes.integrationNode.response.score }} > 700',
-        assignmentDetails: '{{ nodes.integrationNode.response.score }} > 700',
-        targetField: 'data.decision',
-        defaultValue: '',
-        rules: [],
-      };
-    }
-
-    addNode({
-      id: `${type}-${Math.random().toString(36).slice(2, 11)}`,
-      type,
-      position,
-      data: {
-        label: newLabel,
-        ...extraData,
-      },
-    });
-  }, [addNode, reactFlowInstance]);
+    addNode(buildNodeBlueprint(type, position));
+  }, [addNode, buildNodeBlueprint, reactFlowInstance]);
 
   return (
     <ReactFlow
@@ -366,20 +482,27 @@ function DnDFlowContainer() {
       edges={edges}
       onNodesChange={onNodesChange}
       onEdgesChange={onEdgesChange}
+      onNodesDelete={onNodesDelete}
+      onEdgesDelete={onEdgesDelete}
+      onSelectionChange={syncSelection}
       onConnect={onConnect}
       onNodeClick={onNodeClick}
+      onEdgeClick={onEdgeClick}
       nodeTypes={nodeTypes}
       onPaneClick={onPaneClick}
       onInit={setReactFlowInstance}
       onDrop={onDrop}
       onDragOver={onDragOver}
+      deleteKeyCode={null}
       fitView
       attributionPosition="bottom-left"
       className="bg-[#F8F9FB]"
+      defaultEdgeOptions={{
+        type: 'smoothstep',
+      }}
     >
       <Background color="#d6d9df" gap={20} size={1} />
       <Controls className="!bg-white !border-slate-200 !shadow-sm" />
     </ReactFlow>
   );
 }
-
