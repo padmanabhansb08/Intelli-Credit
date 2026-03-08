@@ -7,18 +7,12 @@ import io
 import json
 import os
 import re
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 import httpx
 import numpy as np
 import pandas as pd
 import pdfplumber
-import pytesseract
-
-try:
-    from pdf2image import convert_from_bytes
-except ImportError:
-    convert_from_bytes = None
 
 try:
     from databricks import sql
@@ -30,6 +24,8 @@ DATABRICKS_HTTP_PATH = os.environ.get("DATABRICKS_HTTP_PATH", "sql/1.0/endpoints
 DATABRICKS_ACCESS_TOKEN = os.environ.get("DATABRICKS_ACCESS_TOKEN", "mock-token")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-1.5-flash")
+GEMINI_TIMEOUT_SEC = float(os.environ.get("GEMINI_TIMEOUT_SEC", "45"))
+BANK_CATEGORY_BATCH_SIZE = int(os.environ.get("BANK_CATEGORY_BATCH_SIZE", "40"))
 
 FINANCIAL_FIELDS = [
     "revenue",
@@ -49,6 +45,44 @@ FINANCIAL_FIELDS = [
     "accounts_receivable",
     "inventory",
 ]
+
+UNSTRUCTURED_DOCUMENT_TYPES = {
+    "board_minutes",
+    "rating_report",
+    "sanction_letter",
+    "credit_note",
+    "unstructured_document",
+}
+
+ALLOWED_TRANSACTION_CATEGORIES = {
+    "customer_receipt",
+    "gateway_settlement",
+    "vendor_payment",
+    "tax_payment",
+    "salary_credit",
+    "cash_deposit",
+    "cash_withdrawal",
+    "internal_transfer",
+    "loan_repayment",
+    "emi_bounce",
+    "chargeback",
+    "bank_charge",
+    "other",
+    "uncategorized",
+}
+
+ALLOWED_PAYMENT_GATEWAYS = {
+    "razorpay",
+    "billdesk",
+    "payu",
+    "cashfree",
+    "phonepe",
+    "paytm",
+    "bharatpe",
+    "bank_transfer",
+    "none",
+    "unknown",
+}
 
 FIELD_PATTERNS = {
     "revenue": [
@@ -96,8 +130,6 @@ FIELD_PATTERNS = {
     "inventory": [r"inventory[:\s]+(?:rs\.?|inr)?\s*([\d,]+(?:\.\d+)?)"],
 }
 
-BOUNCE_MARKERS = ["bounce", "bounced", "return", "returned", "rtn", "dishonour", "dishonor", "reject"]
-EMI_MARKERS = ["emi", "ecs", "nach", "loan", "installment", "instalment"]
 
 
 def _safe_float(value: Any, default: float = 0.0) -> float:
@@ -128,6 +160,14 @@ def _safe_int(value: Any, default: int = 0) -> int:
     return int(round(_safe_float(value, default)))
 
 
+def _safe_bool(value: Any, default: bool = False) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return default
+    return str(value).strip().lower() in {"true", "1", "yes", "y"}
+
+
 def _normalize_text(text: str) -> str:
     return re.sub(r"\s+", " ", (text or "")).strip()
 
@@ -144,16 +184,95 @@ def _extract_json_block(text: str) -> Dict[str, Any]:
         return {}
 
 
-def _normalize_numeric_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
-    normalized = dict(payload)
+def _coerce_sanction_terms(raw_terms: Any) -> Dict[str, Any]:
+    terms = raw_terms if isinstance(raw_terms, Mapping) else {}
+    return {
+        "limit": _safe_float(terms.get("limit"), None),
+        "interest_rate": _safe_float(terms.get("interest_rate"), None),
+        "tenor_months": _safe_int(terms.get("tenor_months"), 0) or None,
+        "remaining_tenor_months": _safe_int(terms.get("remaining_tenor_months"), 0) or None,
+        "moratorium_months": _safe_int(terms.get("moratorium_months"), 0),
+        "installment_amount": _safe_float(
+            terms.get("installment_amount") or terms.get("emi_amount") or terms.get("repayment_installment"),
+            None,
+        ),
+        "principal_installment_amount": _safe_float(terms.get("principal_installment_amount"), None),
+        "repayment_frequency": str(
+            terms.get("repayment_frequency") or terms.get("installment_frequency") or "monthly"
+        ).lower(),
+        "balance_outstanding": _safe_float(
+            terms.get("balance_outstanding") or terms.get("outstanding") or terms.get("outstanding_amount"),
+            None,
+        ),
+        "annual_principal_due": _safe_float(terms.get("annual_principal_due"), None),
+        "current_maturity_of_long_term_debt": _safe_float(
+            terms.get("current_maturity_of_long_term_debt") or terms.get("cmltd"),
+            None,
+        ),
+        "amortization_schedule_available": _safe_bool(terms.get("amortization_schedule_available")),
+    }
+
+
+def _validate_financial_extraction(
+    payload: Mapping[str, Any],
+    *,
+    raw_text: str = "",
+    default_document_type: str = "unknown",
+) -> Dict[str, Any]:
+    normalized: Dict[str, Any] = {field: None for field in FINANCIAL_FIELDS}
     for field in FINANCIAL_FIELDS:
-        if field in normalized:
-            normalized[field] = _safe_float(normalized[field], None)
-    if "sanction_terms" in normalized and isinstance(normalized["sanction_terms"], dict):
-        for key in ("limit", "interest_rate", "tenor_months"):
-            if key in normalized["sanction_terms"]:
-                normalized["sanction_terms"][key] = _safe_float(normalized["sanction_terms"][key], None)
+        if field in payload:
+            normalized[field] = _safe_float(payload.get(field), None)
+
+    normalized["document_type"] = str(payload.get("document_type") or default_document_type)
+    normalized["document_summary"] = str(payload.get("document_summary") or "").strip()
+    normalized["board_resolution_present"] = _safe_bool(payload.get("board_resolution_present"))
+    normalized["credit_rating"] = payload.get("credit_rating")
+    normalized["sanction_terms"] = _coerce_sanction_terms(payload.get("sanction_terms") or {})
+    normalized["raw_text"] = (raw_text or str(payload.get("raw_text") or ""))[:8000]
+    normalized["extraction_warnings"] = list(payload.get("extraction_warnings") or [])
     return normalized
+
+
+def _gemini_endpoint() -> str:
+    return f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent?key={GEMINI_API_KEY}"
+
+
+def _request_gemini_json(
+    prompt: str,
+    *,
+    file_bytes: bytes | None = None,
+    text_context: str | None = None,
+) -> Dict[str, Any]:
+    if not GEMINI_API_KEY:
+        return {}
+
+    parts: List[Dict[str, Any]] = [{"text": prompt}]
+    if text_context:
+        parts.append({"text": text_context[:12000]})
+    if file_bytes:
+        parts.append(
+            {
+                "inline_data": {
+                    "mime_type": "application/pdf",
+                    "data": base64.b64encode(file_bytes).decode("utf-8"),
+                }
+            }
+        )
+
+    payload = {
+        "contents": [{"parts": parts}],
+        "generationConfig": {"temperature": 0.1, "responseMimeType": "application/json"},
+    }
+    try:
+        response = httpx.post(_gemini_endpoint(), json=payload, timeout=GEMINI_TIMEOUT_SEC)
+        response.raise_for_status()
+        body = response.json()
+        text_parts = body.get("candidates", [{}])[0].get("content", {}).get("parts", [])
+        combined = "\n".join(part.get("text", "") for part in text_parts)
+        return _extract_json_block(combined)
+    except Exception:
+        return {}
 
 
 def _extract_text_from_pdf(file_bytes: bytes) -> str:
@@ -170,19 +289,14 @@ def _extract_text_from_pdf(file_bytes: bytes) -> str:
     return "\n".join(text_chunks)
 
 
-def _ocr_pdf(file_bytes: bytes) -> str:
-    if convert_from_bytes is None:
-        return ""
-    images = convert_from_bytes(file_bytes)
-    return "\n".join(pytesseract.image_to_string(image) for image in images)
-
-
 def _detect_document_type(text: str) -> str:
     lower_text = (text or "").lower()
     if any(token in lower_text for token in ["sanction letter", "facility letter", "credit sanction"]):
         return "sanction_letter"
     if any(token in lower_text for token in ["board meeting", "board resolution", "resolved that"]):
         return "board_minutes"
+    if any(token in lower_text for token in ["rating rationale", "credit rating", "brickwork", "care ratings", "crisll", "icra"]):
+        return "rating_report"
     if any(token in lower_text for token in ["balance sheet", "statement of profit", "annual report"]):
         return "financial_statement"
     return "unstructured_document"
@@ -198,6 +312,11 @@ def _extract_fields_from_text(text: str) -> Dict[str, Any]:
                 extracted[field] = _safe_float(match.group(1), None)
                 break
 
+    limit_match = re.search(r"(?:limit|facility)\s*(?:of)?\s*(?:rs\.?|inr)?\s*([\d,]+(?:\.\d+)?)", cleaned_text, re.IGNORECASE)
+    interest_match = re.search(r"(?:interest\s+rate|roi)[:\s]+([\d.]+)", cleaned_text, re.IGNORECASE)
+    tenor_match = re.search(r"(?:tenor|repayment\s+period)[:\s]+([\d]+)", cleaned_text, re.IGNORECASE)
+    installment_match = re.search(r"(?:emi|installment)[:\s]+(?:rs\.?|inr)?\s*([\d,]+(?:\.\d+)?)", cleaned_text, re.IGNORECASE)
+
     lines = [line.strip() for line in cleaned_text.splitlines() if line.strip()]
     extracted["document_type"] = _detect_document_type(cleaned_text)
     extracted["board_resolution_present"] = any(
@@ -205,56 +324,74 @@ def _extract_fields_from_text(text: str) -> Dict[str, Any]:
     )
     extracted["document_summary"] = " ".join(lines[:5])[:1200]
     extracted["sanction_terms"] = {
-        "limit": _safe_float(re.search(r"(?:limit|facility)\s*(?:of)?\s*(?:rs\.?|inr)?\s*([\d,]+(?:\.\d+)?)", cleaned_text, re.IGNORECASE).group(1), None)
-        if re.search(r"(?:limit|facility)\s*(?:of)?\s*(?:rs\.?|inr)?\s*([\d,]+(?:\.\d+)?)", cleaned_text, re.IGNORECASE)
-        else None,
-        "interest_rate": _safe_float(re.search(r"(?:interest\s+rate|roi)[:\s]+([\d.]+)", cleaned_text, re.IGNORECASE).group(1), None)
-        if re.search(r"(?:interest\s+rate|roi)[:\s]+([\d.]+)", cleaned_text, re.IGNORECASE)
-        else None,
-        "tenor_months": _safe_float(re.search(r"(?:tenor|repayment\s+period)[:\s]+([\d]+)", cleaned_text, re.IGNORECASE).group(1), None)
-        if re.search(r"(?:tenor|repayment\s+period)[:\s]+([\d]+)", cleaned_text, re.IGNORECASE)
-        else None,
+        "limit": _safe_float(limit_match.group(1), None) if limit_match else None,
+        "interest_rate": _safe_float(interest_match.group(1), None) if interest_match else None,
+        "tenor_months": _safe_int(tenor_match.group(1), 0) if tenor_match else None,
+        "installment_amount": _safe_float(installment_match.group(1), None) if installment_match else None,
     }
     extracted["raw_text"] = cleaned_text[:8000]
     return extracted
 
 
-def _invoke_gemini_vision_fallback(file_bytes: bytes, extracted_text: str) -> Dict[str, Any]:
-    if not GEMINI_API_KEY:
-        return {}
-    prompt = (
-        "Extract Indian credit underwriting data from this PDF. "
-        "Return strict JSON with keys: revenue, net_income, total_assets, total_liabilities, total_equity, "
-        "ebitda, total_debt, cash_and_equivalents, operating_cash_flow, depreciation, interest_expense, "
-        "tax_expense, current_assets, current_liabilities, accounts_receivable, inventory, document_type, "
-        "document_summary, board_resolution_present, sanction_terms. Use null when unavailable."
+def _build_financial_extraction_prompt(document_type_hint: str) -> str:
+    return (
+        "You are extracting credit-underwriting data for an Indian corporate loan proposal. "
+        "Return strict JSON only. Use null when data is unavailable. "
+        "Schema: {"
+        "\"revenue\": number|null, "
+        "\"net_income\": number|null, "
+        "\"total_assets\": number|null, "
+        "\"total_liabilities\": number|null, "
+        "\"total_equity\": number|null, "
+        "\"ebitda\": number|null, "
+        "\"total_debt\": number|null, "
+        "\"cash_and_equivalents\": number|null, "
+        "\"operating_cash_flow\": number|null, "
+        "\"depreciation\": number|null, "
+        "\"interest_expense\": number|null, "
+        "\"tax_expense\": number|null, "
+        "\"current_assets\": number|null, "
+        "\"current_liabilities\": number|null, "
+        "\"accounts_receivable\": number|null, "
+        "\"inventory\": number|null, "
+        "\"document_type\": string, "
+        "\"document_summary\": string, "
+        "\"board_resolution_present\": boolean, "
+        "\"credit_rating\": string|null, "
+        "\"sanction_terms\": {"
+        "\"limit\": number|null, "
+        "\"interest_rate\": number|null, "
+        "\"tenor_months\": integer|null, "
+        "\"remaining_tenor_months\": integer|null, "
+        "\"moratorium_months\": integer|null, "
+        "\"installment_amount\": number|null, "
+        "\"principal_installment_amount\": number|null, "
+        "\"repayment_frequency\": string|null, "
+        "\"balance_outstanding\": number|null, "
+        "\"annual_principal_due\": number|null, "
+        "\"current_maturity_of_long_term_debt\": number|null, "
+        "\"amortization_schedule_available\": boolean"
+        "}"
+        "}. "
+        f"Document type hint: {document_type_hint}."
     )
-    payload = {
-        "contents": [
-            {
-                "parts": [
-                    {"text": prompt},
-                    {"text": extracted_text[:12000]},
-                    {
-                        "inline_data": {
-                            "mime_type": "application/pdf",
-                            "data": base64.b64encode(file_bytes).decode("utf-8"),
-                        }
-                    },
-                ]
-            }
-        ]
-    }
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent?key={GEMINI_API_KEY}"
-    try:
-        response = httpx.post(url, json=payload, timeout=45.0)
-        response.raise_for_status()
-        data = response.json()
-        parts = data.get("candidates", [{}])[0].get("content", {}).get("parts", [])
-        combined = "\n".join(part.get("text", "") for part in parts)
-        return _normalize_numeric_payload(_extract_json_block(combined))
-    except Exception:
-        return {}
+
+
+def _invoke_gemini_vision_fallback(
+    file_bytes: bytes,
+    extracted_text: str,
+    document_type_hint: str,
+) -> Dict[str, Any]:
+    payload = _request_gemini_json(
+        _build_financial_extraction_prompt(document_type_hint),
+        file_bytes=file_bytes,
+        text_context=extracted_text,
+    )
+    return _validate_financial_extraction(
+        payload,
+        raw_text=extracted_text,
+        default_document_type=document_type_hint,
+    )
 
 
 def get_databricks_connection():
@@ -353,72 +490,91 @@ def reconcile_gst_with_bank(gst_data: Dict[str, Any], bank_data: Dict[str, Any])
 
 
 def parse_financial_pdf(file_bytes: bytes) -> Dict[str, Any]:
-    """Extract financial and underwriting-relevant data from PDFs."""
-    extracted = {field: None for field in FINANCIAL_FIELDS}
-    extracted.update(
-        {
-            "document_type": "unknown",
-            "document_summary": "",
-            "board_resolution_present": False,
-            "sanction_terms": {},
-            "raw_text": "",
-            "extraction_status": "failed",
-            "extraction_warnings": [],
-        }
-    )
+    """Extract financial and underwriting-relevant data from PDFs.
 
+    For *unstructured* document types (board minutes, rating reports, sanction
+    letters, credit notes) the Gemini vision model is the **primary and sole**
+    extraction path — regex-based field extraction is skipped entirely because
+    it cannot reliably parse free-form narrative documents.
+
+    For structured financial statements the pipeline uses a hybrid approach:
+    regex first, then Gemini fills any gaps.
+    """
     try:
-        primary_text = _extract_text_from_pdf(file_bytes)
-    except Exception as exc:
-        primary_text = ""
-        extracted["extraction_warnings"].append(f"native_pdf_parse_failed: {exc}")
+        raw_text = _extract_text_from_pdf(file_bytes)
+    except Exception:
+        raw_text = ""
 
-    if primary_text:
-        native_extract = _extract_fields_from_text(primary_text)
-        extracted.update({key: value for key, value in native_extract.items() if value not in (None, "", {})})
-        extracted["raw_text"] = primary_text[:8000]
+    document_type = _detect_document_type(raw_text)
+    is_unstructured = document_type in UNSTRUCTURED_DOCUMENT_TYPES
+    text_too_short = len(_normalize_text(raw_text)) < 500
 
-    populated_numeric = sum(1 for field in FINANCIAL_FIELDS if extracted.get(field) is not None)
-    ocr_text = ""
-    if populated_numeric < 4:
-        try:
-            ocr_text = _ocr_pdf(file_bytes)
-        except Exception as exc:
-            extracted["extraction_warnings"].append(f"ocr_failed: {exc}")
-            ocr_text = ""
-        if ocr_text:
-            ocr_extract = _extract_fields_from_text(ocr_text)
-            for key, value in ocr_extract.items():
-                if extracted.get(key) in (None, "", {}) and value not in (None, "", {}):
-                    extracted[key] = value
-            if not extracted.get("raw_text"):
-                extracted["raw_text"] = ocr_text[:8000]
-
-    populated_numeric = sum(1 for field in FINANCIAL_FIELDS if extracted.get(field) is not None)
-    if populated_numeric < 4 or extracted.get("document_type") in {"sanction_letter", "board_minutes", "unstructured_document"}:
-        gemini_data = _invoke_gemini_vision_fallback(file_bytes, f"{primary_text}\n{ocr_text}".strip())
-        for key, value in gemini_data.items():
-            if extracted.get(key) in (None, "", {}) and value not in (None, "", {}):
-                extracted[key] = value
-
-    if not extracted.get("document_summary") and extracted.get("raw_text"):
-        lines = [line.strip() for line in extracted["raw_text"].splitlines() if line.strip()]
-        extracted["document_summary"] = " ".join(lines[:5])[:1200]
-
-    populated_numeric = sum(1 for field in FINANCIAL_FIELDS if extracted.get(field) is not None)
-    if populated_numeric >= 6:
-        extracted["extraction_status"] = "structured"
-    elif populated_numeric > 0 or extracted.get("document_summary"):
-        extracted["extraction_status"] = "partial"
+    # ── Unstructured docs: Gemini-only (no regex) ─────────────────────────
+    if is_unstructured or text_too_short:
+        gemini_extract = _invoke_gemini_vision_fallback(
+            file_bytes, raw_text, document_type,
+        )
+        merged = _validate_financial_extraction(
+            gemini_extract,
+            raw_text=raw_text or gemini_extract.get("raw_text", ""),
+            default_document_type=document_type,
+        )
+        merged["document_type"] = (
+            gemini_extract.get("document_type") or document_type
+        )
+        merged["extraction_status"] = (
+            "gemini_primary" if gemini_extract else "partial"
+        )
     else:
+        # ── Structured docs: regex first, Gemini back-fill ────────────────
+        native_extract = _validate_financial_extraction(
+            _extract_fields_from_text(raw_text),
+            raw_text=raw_text,
+            default_document_type=document_type,
+        )
+        populated = sum(
+            1 for f in FINANCIAL_FIELDS if native_extract.get(f) is not None
+        )
+        gemini_extract = (
+            _invoke_gemini_vision_fallback(file_bytes, raw_text, document_type)
+            if populated < 6
+            else {}
+        )
+        merged = _validate_financial_extraction(
+            {
+                **native_extract,
+                **{
+                    k: v
+                    for k, v in gemini_extract.items()
+                    if v not in (None, "", {})
+                },
+            },
+            raw_text=raw_text or gemini_extract.get("raw_text", ""),
+            default_document_type=document_type,
+        )
+        merged["document_type"] = (
+            gemini_extract.get("document_type")
+            or merged.get("document_type")
+            or document_type
+        )
+        merged["extraction_status"] = (
+            "hybrid" if gemini_extract else "native_structured"
+        )
+
+    populated_numeric = sum(
+        1 for f in FINANCIAL_FIELDS if merged.get(f) is not None
+    )
+    if populated_numeric == 0 and not merged.get("document_summary"):
         raise ValueError("Unable to extract usable content from PDF document")
 
-    if extracted.get("revenue") is None:
-        extracted["extraction_warnings"].append("revenue_not_found")
-    return extracted
+    if merged.get("revenue") is None:
+        merged["extraction_warnings"].append("revenue_not_found")
+    if not merged["sanction_terms"].get("amortization_schedule_available"):
+        merged["extraction_warnings"].append("amortization_schedule_missing")
+    return merged
 
 
-def _find_column(columns: Iterable[str], keywords: List[str]) -> Optional[str]:
+def _find_column(columns: Iterable[str], keywords: Sequence[str]) -> Optional[str]:
     normalized = {str(column).strip().lower(): column for column in columns}
     for keyword in keywords:
         for lowered, original in normalized.items():
@@ -427,27 +583,73 @@ def _find_column(columns: Iterable[str], keywords: List[str]) -> Optional[str]:
     return None
 
 
-def _classify_transaction(description: str, credit: float, debit: float) -> str:
-    text = (description or "").lower()
-    is_bounce = any(marker in text for marker in BOUNCE_MARKERS)
-    is_emi = any(marker in text for marker in EMI_MARKERS)
-    if is_bounce and is_emi:
-        return "emi_bounce"
-    if is_bounce:
-        return "bounce"
-    if is_emi and debit > 0:
-        return "loan_repayment"
-    if any(token in text for token in ["salary", "payroll"]):
-        return "salary_credit"
-    if any(token in text for token in ["gst", "tax", "tds"]):
-        return "tax_payment"
-    if any(token in text for token in ["upi", "neft", "rtgs", "imps"]):
-        return "transfer"
-    if any(token in text for token in ["cash dep", "cash deposit"]):
-        return "cash_deposit"
-    if any(token in text for token in ["cash wd", "atm", "cash withdrawal"]):
-        return "cash_withdrawal"
-    return "other_credit" if credit > 0 else "other_debit"
+def _batch_records(items: Sequence[Mapping[str, Any]], batch_size: int) -> Iterable[List[Mapping[str, Any]]]:
+    for start in range(0, len(items), batch_size):
+        yield list(items[start : start + batch_size])
+
+
+def _build_transaction_classification_prompt(records: Sequence[Mapping[str, Any]]) -> str:
+    return (
+        'Classify Indian bank statement transactions for a corporate underwriting model. '
+        'Return strict JSON with key "transactions" containing a list of objects with fields: '
+        '"row_id" (integer), '
+        '"category" (one of customer_receipt, gateway_settlement, vendor_payment, tax_payment, salary_credit, '
+        'cash_deposit, cash_withdrawal, internal_transfer, loan_repayment, emi_bounce, chargeback, bank_charge, other, uncategorized), '
+        '"payment_gateway" (one of razorpay, billdesk, payu, cashfree, phonepe, paytm, bharatpe, bank_transfer, none, unknown), '
+        '"is_emi_bounce" (boolean), '
+        '"is_revenue_inflow" (boolean), '
+        '"is_cyclical_revenue" (boolean), '
+        '"confidence" (number between 0 and 1). '
+        'Use description, debit, credit, amount sign, and context. '
+        f'Transactions: {json.dumps(records)}'
+    )
+
+
+def _normalize_transaction_classifications(
+    payload: Mapping[str, Any],
+    records: Sequence[Mapping[str, Any]],
+) -> Dict[int, Dict[str, Any]]:
+    defaults = {
+        int(record["row_id"]): {
+            "category": "uncategorized",
+            "payment_gateway": "unknown",
+            "is_emi_bounce": False,
+            "is_revenue_inflow": False,
+            "is_cyclical_revenue": False,
+            "confidence": 0.0,
+        }
+        for record in records
+    }
+    for item in payload.get("transactions", []):
+        try:
+            row_id = int(item.get("row_id"))
+        except Exception:
+            continue
+        if row_id not in defaults:
+            continue
+        category = str(item.get("category") or "uncategorized").lower()
+        gateway = str(item.get("payment_gateway") or "unknown").lower()
+        defaults[row_id] = {
+            "category": category if category in ALLOWED_TRANSACTION_CATEGORIES else "uncategorized",
+            "payment_gateway": gateway if gateway in ALLOWED_PAYMENT_GATEWAYS else "unknown",
+            "is_emi_bounce": _safe_bool(item.get("is_emi_bounce")),
+            "is_revenue_inflow": _safe_bool(item.get("is_revenue_inflow")),
+            "is_cyclical_revenue": _safe_bool(item.get("is_cyclical_revenue")),
+            "confidence": max(0.0, min(1.0, _safe_float(item.get("confidence"), 0.0))),
+        }
+    return defaults
+
+
+def _categorize_transactions_with_gemini(records: Sequence[Mapping[str, Any]]) -> Tuple[Dict[int, Dict[str, Any]], str]:
+    all_classifications: Dict[int, Dict[str, Any]] = {}
+    service_status = "available"
+    for batch in _batch_records(records, BANK_CATEGORY_BATCH_SIZE):
+        payload = _request_gemini_json(_build_transaction_classification_prompt(batch))
+        normalized = _normalize_transaction_classifications(payload, batch)
+        if not payload:
+            service_status = "service_unavailable"
+        all_classifications.update(normalized)
+    return all_classifications, service_status
 
 
 def _infer_min_balance_threshold(daily_balances: pd.Series) -> float:
@@ -466,50 +668,75 @@ def _infer_min_balance_threshold(daily_balances: pd.Series) -> float:
 
 
 def _parse_statement_dataframe(df: pd.DataFrame) -> Dict[str, Any]:
-    df = df.copy()
-    df.columns = [str(column).strip() for column in df.columns]
+    working = df.copy()
+    working.columns = [str(column).strip() for column in working.columns]
 
-    date_col = _find_column(df.columns, ["date", "txn date", "transaction date", "value date"])
-    desc_col = _find_column(df.columns, ["description", "narration", "remarks", "particular", "details"])
-    credit_col = _find_column(df.columns, ["credit", "deposit", "cr amount", "withdrawal amt."])
-    debit_col = _find_column(df.columns, ["debit", "withdrawal", "dr amount"])
-    amount_col = _find_column(df.columns, ["amount", "transaction amount"])
-    balance_col = _find_column(df.columns, ["balance", "closing bal", "available balance"])
+    date_col = _find_column(working.columns, ["date", "txn date", "transaction date", "value date"])
+    desc_col = _find_column(working.columns, ["description", "narration", "remarks", "particular", "details"])
+    credit_col = _find_column(working.columns, ["credit", "deposit", "cr amount"])
+    debit_col = _find_column(working.columns, ["debit", "withdrawal", "dr amount"])
+    amount_col = _find_column(working.columns, ["amount", "transaction amount"])
+    balance_col = _find_column(working.columns, ["balance", "closing bal", "available balance"])
 
     if not any([credit_col, debit_col, amount_col]):
         raise ValueError("Bank statement CSV does not contain amount columns")
 
-    working = pd.DataFrame()
-    working["txn_date"] = pd.to_datetime(df[date_col], errors="coerce", dayfirst=True) if date_col else pd.NaT
-    working["description"] = df[desc_col].fillna("") if desc_col else ""
-    working["credit"] = df[credit_col].apply(_safe_float) if credit_col else 0.0
-    working["debit"] = df[debit_col].apply(_safe_float) if debit_col else 0.0
-    working["amount"] = df[amount_col].apply(_safe_float) if amount_col else 0.0
-    working["balance"] = df[balance_col].apply(_safe_float) if balance_col else np.nan
+    parsed = pd.DataFrame()
+    parsed["row_id"] = range(len(working))
+    parsed["txn_date"] = pd.to_datetime(working[date_col], errors="coerce", dayfirst=True) if date_col else pd.NaT
+    parsed["description"] = working[desc_col].fillna("") if desc_col else ""
+    parsed["credit"] = working[credit_col].apply(_safe_float) if credit_col else 0.0
+    parsed["debit"] = working[debit_col].apply(_safe_float) if debit_col else 0.0
+    parsed["amount"] = working[amount_col].apply(_safe_float) if amount_col else 0.0
+    parsed["balance"] = working[balance_col].apply(_safe_float) if balance_col else np.nan
 
     if amount_col and not credit_col and not debit_col:
-        working["credit"] = working["amount"].apply(lambda value: value if value > 0 else 0.0)
-        working["debit"] = working["amount"].apply(lambda value: abs(value) if value < 0 else 0.0)
+        parsed["credit"] = parsed["amount"].apply(lambda value: value if value > 0 else 0.0)
+        parsed["debit"] = parsed["amount"].apply(lambda value: abs(value) if value < 0 else 0.0)
     elif amount_col:
-        unresolved = (working["credit"] == 0) & (working["debit"] == 0)
-        working.loc[unresolved, "credit"] = working.loc[unresolved, "amount"].apply(lambda value: value if value > 0 else 0.0)
-        working.loc[unresolved, "debit"] = working.loc[unresolved, "amount"].apply(lambda value: abs(value) if value < 0 else 0.0)
+        unresolved = (parsed["credit"] == 0) & (parsed["debit"] == 0)
+        parsed.loc[unresolved, "credit"] = parsed.loc[unresolved, "amount"].apply(lambda value: value if value > 0 else 0.0)
+        parsed.loc[unresolved, "debit"] = parsed.loc[unresolved, "amount"].apply(lambda value: abs(value) if value < 0 else 0.0)
 
-    if working["txn_date"].notna().any():
-        working = working.sort_values(["txn_date"]).reset_index(drop=True)
-    working["category"] = working.apply(
-        lambda row: _classify_transaction(row["description"], row["credit"], row["debit"]),
-        axis=1,
+    if parsed["txn_date"].notna().any():
+        parsed = parsed.sort_values(["txn_date", "row_id"]).reset_index(drop=True)
+
+    classification_input = [
+        {
+            "row_id": int(row.row_id),
+            "description": str(row.description)[:220],
+            "credit": round(float(row.credit), 2),
+            "debit": round(float(row.debit), 2),
+            "amount": round(float(row.amount), 2),
+        }
+        for row in parsed.itertuples(index=False)
+    ]
+    classification_map, service_status = _categorize_transactions_with_gemini(classification_input)
+    parsed["category"] = parsed["row_id"].map(lambda idx: classification_map.get(int(idx), {}).get("category", "uncategorized"))
+    parsed["payment_gateway"] = parsed["row_id"].map(
+        lambda idx: classification_map.get(int(idx), {}).get("payment_gateway", "unknown")
+    )
+    parsed["is_emi_bounce"] = parsed["row_id"].map(
+        lambda idx: classification_map.get(int(idx), {}).get("is_emi_bounce", False)
+    )
+    parsed["is_revenue_inflow"] = parsed["row_id"].map(
+        lambda idx: classification_map.get(int(idx), {}).get("is_revenue_inflow", False)
+    )
+    parsed["is_cyclical_revenue"] = parsed["row_id"].map(
+        lambda idx: classification_map.get(int(idx), {}).get("is_cyclical_revenue", False)
+    )
+    parsed["classification_confidence"] = parsed["row_id"].map(
+        lambda idx: classification_map.get(int(idx), {}).get("confidence", 0.0)
     )
 
-    total_inflows = float(working["credit"].sum())
-    total_outflows = float(working["debit"].sum())
+    total_inflows = float(parsed["credit"].sum())
+    total_outflows = float(parsed["debit"].sum())
     net_cash_flow = total_inflows - total_outflows
 
     monthly = pd.DataFrame()
-    if working["txn_date"].notna().any():
+    if parsed["txn_date"].notna().any():
         monthly = (
-            working.dropna(subset=["txn_date"])
+            parsed.dropna(subset=["txn_date"])
             .assign(month=lambda frame: frame["txn_date"].dt.to_period("M").astype(str))
             .groupby("month", as_index=False)
             .agg(inflows=("credit", "sum"), outflows=("debit", "sum"))
@@ -526,7 +753,7 @@ def _parse_statement_dataframe(df: pd.DataFrame) -> Dict[str, Any]:
         if mean_flow > 0:
             stability = max(0.0, 1.0 - min(float(np.std(monthly_flows)) / mean_flow, 1.0))
 
-    balance_points = working.dropna(subset=["txn_date", "balance"]).groupby("txn_date")["balance"].last().sort_index()
+    balance_points = parsed.dropna(subset=["txn_date", "balance"]).groupby("txn_date")["balance"].last().sort_index()
     average_daily_balance = 0.0
     min_balance_threshold = 0.0
     min_balance_violations = 0
@@ -538,15 +765,24 @@ def _parse_statement_dataframe(df: pd.DataFrame) -> Dict[str, Any]:
         min_balance_violations = int((daily_balances < min_balance_threshold).sum())
 
     category_summary: Dict[str, Dict[str, Any]] = {}
-    for category, rows in working.groupby("category"):
+    for category, rows in parsed.groupby("category"):
         category_summary[category] = {
             "count": int(len(rows)),
             "credits": round(float(rows["credit"].sum()), 2),
             "debits": round(float(rows["debit"].sum()), 2),
         }
 
-    bounce_count = int((working["category"] == "bounce").sum() + (working["category"] == "emi_bounce").sum())
-    emi_bounce_count = int((working["category"] == "emi_bounce").sum())
+    gateway_summary = {
+        gateway: {"count": int(len(rows)), "credits": round(float(rows["credit"].sum()), 2)}
+        for gateway, rows in parsed.groupby("payment_gateway")
+    }
+
+    cyclical_revenue_inflows = float(parsed.loc[parsed["is_cyclical_revenue"], "credit"].sum())
+    cyclical_revenue_ratio = (cyclical_revenue_inflows / total_inflows) if total_inflows > 0 else 0.0
+    categorization_confidence = float(parsed["classification_confidence"].mean()) if len(parsed) else 0.0
+
+    bounce_count = int((parsed["category"].isin(["emi_bounce", "chargeback"])).sum())
+    emi_bounce_count = int(parsed["is_emi_bounce"].sum())
 
     return {
         "total_inflows": round(total_inflows, 2),
@@ -554,7 +790,7 @@ def _parse_statement_dataframe(df: pd.DataFrame) -> Dict[str, Any]:
         "total_credits": round(total_inflows, 2),
         "total_debits": round(total_outflows, 2),
         "net_cash_flow": round(net_cash_flow, 2),
-        "num_transactions": int(len(working)),
+        "num_transactions": int(len(parsed)),
         "avg_monthly_flow": round(float(np.mean(monthly_flows)) if monthly_flows else 0.0, 2),
         "cash_flow_stability": round(stability, 4),
         "average_daily_balance": round(average_daily_balance, 2),
@@ -566,6 +802,11 @@ def _parse_statement_dataframe(df: pd.DataFrame) -> Dict[str, Any]:
         "monthly_outflows": monthly_outflows,
         "monthly_flows": monthly_flows,
         "category_summary": category_summary,
+        "payment_gateway_summary": gateway_summary,
+        "cyclical_revenue_ratio": round(cyclical_revenue_ratio, 4),
+        "cyclical_revenue_flag": cyclical_revenue_ratio >= 0.4,
+        "categorization_confidence_score": round(categorization_confidence, 4),
+        "categorization_service_status": service_status,
     }
 
 
@@ -748,6 +989,86 @@ def parse_bureau_json(data: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+_REPAYMENT_FREQUENCY_MULTIPLIER: Dict[str, int] = {
+    "monthly": 12,
+    "quarterly": 4,
+    "half-yearly": 2,
+    "semi-annual": 2,
+    "annual": 1,
+    "yearly": 1,
+    "bullet": 1,
+}
+
+
+def _infer_annual_principal_obligation(
+    financials: Dict[str, Any],
+    sanction_terms: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Infer the annual principal repayment obligation via a multi-tier cascade.
+
+    Priority order:
+      1. Explicit CMLTD from sanction terms.
+      2. Explicit ``annual_principal_due`` from sanction terms.
+      3. ``installment_amount`` × repayment frequency (annualised).
+      4. ``total_debt / max(remaining_tenor, tenor, 60 months) × 12`` as a
+         conservative fallback, with a 15 % confidence penalty.
+
+    Returns a dict with ``annual_principal``, ``cmltd_source``, and
+    ``confidence_penalty`` (0.0 = high confidence, up to 0.15 = uncertain).
+    """
+    terms = sanction_terms or {}
+
+    # Tier 1 – explicit CMLTD
+    cmltd = _safe_float(
+        terms.get("current_maturity_of_long_term_debt") or terms.get("cmltd"),
+        0.0,
+    )
+    if cmltd > 0:
+        return {
+            "annual_principal": cmltd,
+            "cmltd_source": "sanction_terms_cmltd",
+            "confidence_penalty": 0.0,
+        }
+
+    # Tier 2 – annual_principal_due
+    annual_principal = _safe_float(terms.get("annual_principal_due"), 0.0)
+    if annual_principal > 0:
+        return {
+            "annual_principal": annual_principal,
+            "cmltd_source": "sanction_terms_annual_principal_due",
+            "confidence_penalty": 0.0,
+        }
+
+    # Tier 3 – installment × frequency
+    installment = _safe_float(
+        terms.get("installment_amount")
+        or terms.get("principal_installment_amount"),
+        0.0,
+    )
+    frequency = str(terms.get("repayment_frequency") or "monthly").lower()
+    multiplier = _REPAYMENT_FREQUENCY_MULTIPLIER.get(frequency, 12)
+    if installment > 0:
+        return {
+            "annual_principal": installment * multiplier,
+            "cmltd_source": "installment_times_frequency",
+            "confidence_penalty": 0.05,
+        }
+
+    # Tier 4 – conservative estimate from tenor
+    total_debt = _safe_float(
+        financials.get("total_debt") or financials.get("long_term_liab"), 0.0,
+    )
+    remaining = _safe_int(terms.get("remaining_tenor_months"), 0)
+    tenor = _safe_int(terms.get("tenor_months"), 0)
+    effective_months = max(remaining, tenor, 60)  # floor at 5 years
+    est_principal = (total_debt / effective_months) * 12 if total_debt > 0 else 0.0
+    return {
+        "annual_principal": round(est_principal, 2),
+        "cmltd_source": "estimated_from_tenor" if est_principal > 0 else "not_available",
+        "confidence_penalty": 0.15,
+    }
+
+
 def compute_financial_ratios(
     financials: Dict[str, Any],
     bank_data: Dict[str, Any],
@@ -755,12 +1076,30 @@ def compute_financial_ratios(
     collateral_value: float,
     loan_amount: float,
     prev_year_revenue: Optional[float] = None,
+    sanction_terms: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    """Compute all financial ratios needed for underwriting and ML models."""
+    """Compute all financial ratios needed for underwriting and ML models.
+
+    The DSCR calculation infers the annual principal obligation from
+    ``sanction_terms`` via :func:`_infer_annual_principal_obligation`
+    rather than using a blanket ``total_debt × 10 %`` assumption.
+    When amortization schedule data is missing the confidence score is
+    penalised so that downstream models treat the DSCR as uncertain.
+    """
     revenue = _safe_float(financials.get("revenue") or financials.get("operating_income"), 0.0)
     net_income = _safe_float(financials.get("net_income") or financials.get("net_profit"), 0.0)
-    total_assets = _safe_float(financials.get("total_assets"), _safe_float(financials.get("current_assets"), 0.0) + _safe_float(financials.get("fixed_assets"), 0.0) + _safe_float(financials.get("intangible_assets"), 0.0))
-    total_liabilities = _safe_float(financials.get("total_liabilities"), _safe_float(financials.get("short_term_liab"), 0.0) + _safe_float(financials.get("long_term_liab"), 0.0) + _safe_float(financials.get("contingent_liab"), 0.0))
+    total_assets = _safe_float(
+        financials.get("total_assets"),
+        _safe_float(financials.get("current_assets"), 0.0)
+        + _safe_float(financials.get("fixed_assets"), 0.0)
+        + _safe_float(financials.get("intangible_assets"), 0.0),
+    )
+    total_liabilities = _safe_float(
+        financials.get("total_liabilities"),
+        _safe_float(financials.get("short_term_liab"), 0.0)
+        + _safe_float(financials.get("long_term_liab"), 0.0)
+        + _safe_float(financials.get("contingent_liab"), 0.0),
+    )
     total_equity = _safe_float(financials.get("total_equity"), max(total_assets - total_liabilities, 0.0))
     total_debt = _safe_float(financials.get("total_debt") or financials.get("long_term_liab"), 0.0)
     interest_expense = _safe_float(financials.get("interest_expense"), max(total_debt * 0.09, 0.0))
@@ -775,7 +1114,12 @@ def compute_financial_ratios(
     if cash_flow == 0:
         cash_flow = _safe_float(bank_data.get("net_cash_flow"), 0.0)
 
-    annual_debt_service = interest_expense + (total_debt * 0.10)
+    # ── DSCR: infer principal repayment from sanction terms ───────────────
+    principal_info = _infer_annual_principal_obligation(
+        financials, sanction_terms or financials.get("sanction_terms") or {},
+    )
+    annual_debt_service = interest_expense + principal_info["annual_principal"]
+
     revenue_growth = ((revenue - prev_year_revenue) / prev_year_revenue) if prev_year_revenue and prev_year_revenue > 0 else 0.0
     ebitda_margin = (ebitda / revenue) if revenue > 0 else 0.0
     debt_equity = (total_debt / total_equity) if total_equity > 0 else 10.0
@@ -798,6 +1142,8 @@ def compute_financial_ratios(
         "cash_flow": round(cash_flow, 2),
         "annual_debt_service": round(annual_debt_service, 2),
         "dscr": round(dscr, 4),
+        "dscr_cmltd_source": principal_info["cmltd_source"],
+        "dscr_confidence_penalty": principal_info["confidence_penalty"],
         "collateral_value": round(collateral_value, 2),
         "loan_amount_requested": round(loan_amount, 2),
         "collateral_coverage": round(collateral_coverage, 4),

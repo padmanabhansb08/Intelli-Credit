@@ -1,33 +1,42 @@
 ﻿"""
 Web-Scale Secondary Research
-Provides async crawler functions for e-Courts, MCA, news sentiment, and qualitative insight scoring.
+Provides async functions for e-Courts, MCA, news sentiment, and qualitative
+insight scoring.  All external data fetches use structured JSON API
+integrations (mock Karza / SignalX providers) instead of brittle HTML scraping.
 """
 import os
-import re
-from typing import Any, Dict, List, Optional
-from urllib.parse import quote_plus
+from typing import Any, Dict, List, Optional, Tuple
 
 import asyncio
-
 import httpx
-from bs4 import BeautifulSoup
 
-INDUSTRY_MACRO = {
+# ---------------------------------------------------------------------------
+# Industry Macroeconomics (static lookup – injectable in future)
+# ---------------------------------------------------------------------------
+INDUSTRY_MACRO: Dict[str, Dict[str, Any]] = {
     "Manufacturing": {"growth_rate": 0.04, "volatility": 0.15, "default_rate_sector": 0.035, "outlook": "Stable", "risk_factor": 0.4},
     "IT Services": {"growth_rate": 0.12, "volatility": 0.10, "default_rate_sector": 0.02, "outlook": "Growth", "risk_factor": 0.2},
     "Retail": {"growth_rate": 0.03, "volatility": 0.18, "default_rate_sector": 0.04, "outlook": "Stable", "risk_factor": 0.5},
 }
 
-ECOURTS_PROXY_URL = os.environ.get("ECOURTS_PROXY_URL")
-MCA_PROXY_URL = os.environ.get("MCA_PROXY_URL")
-HUGGINGFACE_API_TOKEN = os.environ.get("HUGGINGFACE_API_TOKEN")
-FINBERT_MODEL = os.environ.get("FINBERT_MODEL", "ProsusAI/finbert")
+# ---------------------------------------------------------------------------
+# Environment-driven API configuration
+# ---------------------------------------------------------------------------
+ECOURTS_API_URL: Optional[str] = os.environ.get("ECOURTS_API_URL")
+MCA_API_URL: Optional[str] = os.environ.get("MCA_API_URL")
+HUGGINGFACE_API_TOKEN: Optional[str] = os.environ.get("HUGGINGFACE_API_TOKEN")
+FINBERT_MODEL: str = os.environ.get("FINBERT_MODEL", "ProsusAI/finbert")
 
-_FINBERT_PIPELINE = None
-_FINBERT_LOAD_ATTEMPTED = False
+_FINBERT_PIPELINE: Any = None
+_FINBERT_LOAD_ATTEMPTED: bool = False
 
+
+# ===================================================================
+# FinBERT Sentiment
+# ===================================================================
 
 def _label_to_score(label: str, score: float) -> float:
+    """Convert a FinBERT label + confidence into a signed score."""
     label = (label or "").lower()
     if "positive" in label:
         return abs(score)
@@ -46,43 +55,46 @@ def _score_to_category(score: float) -> str:
     return "neutral"
 
 
-def _get_finbert_pipeline():
+def _get_finbert_pipeline() -> Any:
     global _FINBERT_PIPELINE, _FINBERT_LOAD_ATTEMPTED
     if _FINBERT_LOAD_ATTEMPTED:
         return _FINBERT_PIPELINE
     _FINBERT_LOAD_ATTEMPTED = True
     try:
         from transformers import pipeline
-
         _FINBERT_PIPELINE = pipeline("text-classification", model=FINBERT_MODEL, tokenizer=FINBERT_MODEL)
     except Exception:
         _FINBERT_PIPELINE = None
     return _FINBERT_PIPELINE
 
 
-def _lexical_finance_score(text: str) -> float:
-    lower_text = (text or "").lower()
-    positive_words = ["growth", "healthy", "improving", "profitable", "order book", "stable", "strong"]
-    negative_words = ["default", "insolvency", "litigation", "decline", "delay", "overdue", "stress", "weak"]
-    pos_count = sum(lower_text.count(word) for word in positive_words)
-    neg_count = sum(lower_text.count(word) for word in negative_words)
-    total = pos_count + neg_count
-    return 0.0 if total == 0 else (pos_count - neg_count) / total
+async def _score_texts_finbert(texts: List[str]) -> Tuple[List[float], str]:
+    """Score a list of texts using FinBERT sentiment analysis.
 
-
-async def _score_texts_finbert(texts: List[str]) -> List[float]:
+    Returns ``(scores, service_status)`` where *service_status* is one of
+    ``"local_pipeline"``, ``"huggingface_api"``, or ``"service_unavailable"``.
+    If both the local pipeline **and** the HuggingFace API are unreachable
+    every score defaults to ``0.0`` and the status is ``"service_unavailable"``
+    – no lexical word-count fallback is used.
+    """
     texts = [text.strip() for text in texts if text and text.strip()]
     if not texts:
-        return []
+        return [], "no_input"
 
+    # --- Attempt 1: local transformers pipeline ---
     pipeline = _get_finbert_pipeline()
     if pipeline is not None:
         try:
             predictions = pipeline(texts[:8], truncation=True)
-            return [_label_to_score(prediction.get("label"), prediction.get("score", 0.0)) for prediction in predictions]
+            scores = [
+                _label_to_score(p.get("label"), p.get("score", 0.0))
+                for p in predictions
+            ]
+            return scores, "local_pipeline"
         except Exception:
             pass
 
+    # --- Attempt 2: HuggingFace Inference API ---
     if HUGGINGFACE_API_TOKEN:
         headers = {"Authorization": f"Bearer {HUGGINGFACE_API_TOKEN}"}
         scores: List[float] = []
@@ -100,186 +112,196 @@ async def _score_texts_finbert(texts: List[str]) -> List[float]:
                     if isinstance(candidates, list):
                         best = max(candidates, key=lambda item: item.get("score", 0.0))
                         scores.append(_label_to_score(best.get("label"), best.get("score", 0.0)))
+                    else:
+                        scores.append(0.0)
                 except Exception:
-                    scores.append(_lexical_finance_score(text))
-        return scores
+                    scores.append(0.0)
+        if scores:
+            return scores, "huggingface_api"
 
-    return [_lexical_finance_score(text) for text in texts[:8]]
-
-
-async def _search_html(client: httpx.AsyncClient, query: str) -> List[Dict[str, str]]:
-    url = f"https://duckduckgo.com/html/?q={quote_plus(query)}"
-    response = await client.get(url, headers={"User-Agent": "Mozilla/5.0 Intelli-Credit/1.0"})
-    response.raise_for_status()
-    soup = BeautifulSoup(response.text, "html.parser")
-    results: List[Dict[str, str]] = []
-    for anchor in soup.select("a.result__a")[:6]:
-        container = anchor.find_parent("div", class_="result")
-        snippet_node = container.select_one("a.result__snippet") if container else None
-        results.append(
-            {
-                "title": anchor.get_text(" ", strip=True),
-                "url": anchor.get("href", ""),
-                "snippet": snippet_node.get_text(" ", strip=True) if snippet_node else "",
-            }
-        )
-    return results
+    # --- Both paths failed: return zeros with a clear flag ---
+    return [0.0] * min(len(texts), 8), "service_unavailable"
 
 
-async def _fetch_proxy_payload(client: httpx.AsyncClient, proxy_url: Optional[str], company_name: str) -> Optional[Any]:
-    if not proxy_url:
+# ===================================================================
+# Structured API helpers (mock Karza / SignalX integration)
+# ===================================================================
+
+async def _post_structured_api(
+    client: httpx.AsyncClient,
+    api_url: Optional[str],
+    company_name: str,
+    request_type: str,
+) -> Optional[Dict[str, Any]]:
+    """POST a structured JSON payload to a Karza/SignalX-style API endpoint.
+
+    Returns the parsed JSON response or ``None`` if the endpoint is
+    unreachable or not configured.
+    """
+    if not api_url:
         return None
-    response = await client.get(proxy_url, params={"query": company_name}, headers={"User-Agent": "Mozilla/5.0 Intelli-Credit/1.0"})
-    response.raise_for_status()
-    content_type = response.headers.get("content-type", "")
-    if "json" in content_type:
+    try:
+        response = await client.post(
+            api_url,
+            json={"company_name": company_name, "request_type": request_type},
+            headers={
+                "Content-Type": "application/json",
+                "User-Agent": "Intelli-Credit/2.0",
+            },
+        )
+        response.raise_for_status()
         return response.json()
-    return response.text
+    except Exception:
+        return None
 
+
+# ===================================================================
+# News Sentiment
+# ===================================================================
 
 async def fetch_news_sentiment(company_name: str) -> Dict[str, Any]:
-    """Fetch recent news headlines and score them using FinBERT sentiment."""
+    """Fetch recent news headlines and score them using FinBERT sentiment.
+
+    Uses Google News RSS as the primary source.  If RSS is unreachable the
+    function returns an empty headline list – **no DuckDuckGo HTML scraping
+    is attempted**.
+    """
     headlines: List[Dict[str, str]] = []
+    from urllib.parse import quote_plus
+
     async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
         try:
             rss_url = f"https://news.google.com/rss/search?q={quote_plus(company_name)}"
-            response = await client.get(rss_url, headers={"User-Agent": "Mozilla/5.0 Intelli-Credit/1.0"})
+            response = await client.get(rss_url, headers={"User-Agent": "Mozilla/5.0 Intelli-Credit/2.0"})
             response.raise_for_status()
-            soup = BeautifulSoup(response.text, "xml")
-            for item in soup.find_all("item")[:5]:
-                headlines.append(
-                    {
+            # Lightweight XML parsing without requiring bs4 for RSS
+            try:
+                from bs4 import BeautifulSoup
+                soup = BeautifulSoup(response.text, "xml")
+                for item in soup.find_all("item")[:5]:
+                    headlines.append({
                         "headline": item.title.get_text(strip=True) if item.title else "",
                         "source": item.source.get_text(strip=True) if item.source else "Google News",
                         "url": item.link.get_text(strip=True) if item.link else "",
-                    }
-                )
-        except Exception:
-            try:
-                search_results = await _search_html(client, f'"{company_name}" business news')
-                headlines = [
-                    {"headline": item["title"], "source": "Web Search", "url": item["url"]}
-                    for item in search_results[:5]
-                ]
+                    })
             except Exception:
-                headlines = [{"headline": f"No reachable external news feed for {company_name}.", "source": "Unavailable", "url": ""}]
+                headlines = []
+        except Exception:
+            headlines = []
 
-    scores = await _score_texts_finbert([item["headline"] for item in headlines])
+    if not headlines:
+        headlines = [{"headline": f"No reachable external news feed for {company_name}.", "source": "Unavailable", "url": ""}]
+
+    scores, sentiment_service_status = await _score_texts_finbert([h["headline"] for h in headlines])
     avg_score = round(sum(scores) / len(scores), 4) if scores else 0.0
-    for index, item in enumerate(headlines):
-        item["sentiment"] = _score_to_category(scores[index]) if index < len(scores) else "neutral"
+    for idx, item in enumerate(headlines):
+        item["sentiment"] = _score_to_category(scores[idx]) if idx < len(scores) else "neutral"
+
     return {
         "sentiment_score": avg_score,
         "sentiment_category": _score_to_category(avg_score),
         "news_headlines": headlines,
+        "sentiment_service_status": sentiment_service_status,
     }
 
-async def fetch_ecourts_disputes(company_name: str) -> Dict[str, Any]:
-    """Check e-Courts registries or proxy feeds for ongoing disputes."""
-    async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
-        try:
-            payload = await _fetch_proxy_payload(client, ECOURTS_PROXY_URL, company_name)
-            if isinstance(payload, dict):
-                cases = payload.get("cases", [])
-                return {
-                    "litigation_flag": bool(cases),
-                    "cases": cases,
-                    "source_status": "proxy",
-                    "query": company_name,
-                }
-        except Exception:
-            pass
 
-        try:
-            results = await _search_html(client, f'site:ecourts.gov.in "{company_name}"')
-            cases = [
-                {
-                    "title": item["title"],
-                    "snippet": item["snippet"],
-                    "url": item["url"],
-                }
-                for item in results
-                if "ecourts" in item["url"].lower() or "court" in item["title"].lower()
-            ]
+# ===================================================================
+# e-Courts Disputes (structured API – mock Karza / SignalX)
+# ===================================================================
+
+async def fetch_ecourts_disputes(company_name: str) -> Dict[str, Any]:
+    """Check e-Courts registries for ongoing disputes via a structured API.
+
+    Expects the endpoint at ``ECOURTS_API_URL`` to accept a JSON POST with
+    ``{"company_name": ..., "request_type": "ecourts_dispute_check"}`` and
+    return::
+
+        {"cases": [...], "total_pending": int, "provider": str}
+
+    If the API is not configured or unreachable the function returns a
+    safe default with ``"source_status": "service_unavailable"``.
+    """
+    async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
+        payload = await _post_structured_api(
+            client, ECOURTS_API_URL, company_name, "ecourts_dispute_check",
+        )
+        if payload and isinstance(payload, dict):
+            cases = payload.get("cases", [])
             return {
                 "litigation_flag": bool(cases),
                 "cases": cases,
-                "source_status": "public_search",
-                "query": company_name,
-            }
-        except Exception as exc:
-            return {
-                "litigation_flag": False,
-                "cases": [],
-                "source_status": f"unavailable: {exc}",
+                "total_pending": int(payload.get("total_pending", len(cases))),
+                "source_status": "api",
+                "provider": payload.get("provider", "karza"),
                 "query": company_name,
             }
 
-
-async def fetch_mca_filings(company_name: str) -> Dict[str, Any]:
-    """Fetch MCA-linked compliance and director signal data via proxy or search scraping."""
-    async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
-        filings: List[Dict[str, str]] = []
-        source_status = "public_search"
-        try:
-            payload = await _fetch_proxy_payload(client, MCA_PROXY_URL, company_name)
-            if isinstance(payload, dict):
-                filings = payload.get("filings", [])
-                source_status = "proxy"
-        except Exception:
-            filings = []
-
-        if not filings:
-            try:
-                results = await _search_html(client, f'site:mca.gov.in "{company_name}" filings OR director OR annual return')
-                filings = [
-                    {"title": item["title"], "url": item["url"], "snippet": item["snippet"]}
-                    for item in results
-                    if "mca" in item["url"].lower() or "ministry of corporate affairs" in item["title"].lower()
-                ]
-            except Exception as exc:
-                return {
-                    "management_quality": "Average",
-                    "regulatory_risk": "Medium",
-                    "filings": [],
-                    "director_events": [],
-                    "source_status": f"unavailable: {exc}",
-                }
-
-    joined = " ".join(
-        f"{item.get('title', '')} {item.get('snippet', '')}" for item in filings
-    ).lower()
-    negative_hits = sum(joined.count(term) for term in ["strike off", "insolvency", "disqualified", "show cause", "default"])
-    delay_hits = sum(joined.count(term) for term in ["delay", "non filing", "late filing", "adjudication"])
-    positive_hits = sum(joined.count(term) for term in ["annual return", "financial statement", "compliance", "appointment"])
-
-    if negative_hits > 0:
-        regulatory_risk = "High"
-        management_quality = "Weak"
-    elif delay_hits > 0:
-        regulatory_risk = "Medium"
-        management_quality = "Average"
-    else:
-        regulatory_risk = "Low"
-        management_quality = "Strong" if positive_hits > 0 else "Average"
-
-    director_events = [item for item in filings if re.search(r"director|signatory|appointment|resignation", item.get("title", ""), re.IGNORECASE)]
     return {
-        "management_quality": management_quality,
-        "regulatory_risk": regulatory_risk,
-        "filings": filings,
-        "director_events": director_events,
-        "source_status": source_status,
+        "litigation_flag": False,
+        "cases": [],
+        "total_pending": 0,
+        "source_status": "service_unavailable",
+        "provider": "none",
+        "query": company_name,
     }
 
 
-async def analyze_primary_insights(site_visit: str = None, management_notes: str = None) -> Dict[str, Any]:
+# ===================================================================
+# MCA Filings (structured API – mock Karza / SignalX)
+# ===================================================================
+
+async def fetch_mca_filings(company_name: str) -> Dict[str, Any]:
+    """Fetch MCA-linked compliance and director signal data via structured API.
+
+    Expects the endpoint at ``MCA_API_URL`` to accept a JSON POST with
+    ``{"company_name": ..., "request_type": "mca_compliance_check"}`` and
+    return::
+
+        {"filings": [...], "director_events": [...],
+         "management_quality": str, "regulatory_risk": str,
+         "provider": str}
+
+    If the API is not configured or unreachable the function returns
+    conservative defaults with ``"source_status": "service_unavailable"``.
+    """
+    async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
+        payload = await _post_structured_api(
+            client, MCA_API_URL, company_name, "mca_compliance_check",
+        )
+        if payload and isinstance(payload, dict):
+            return {
+                "management_quality": payload.get("management_quality", "Average"),
+                "regulatory_risk": payload.get("regulatory_risk", "Medium"),
+                "filings": payload.get("filings", []),
+                "director_events": payload.get("director_events", []),
+                "source_status": "api",
+                "provider": payload.get("provider", "karza"),
+            }
+
+    return {
+        "management_quality": "Average",
+        "regulatory_risk": "Medium",
+        "filings": [],
+        "director_events": [],
+        "source_status": "service_unavailable",
+        "provider": "none",
+    }
+
+
+# ===================================================================
+# Primary Insights (site visit / management notes)
+# ===================================================================
+
+async def analyze_primary_insights(
+    site_visit: Optional[str] = None,
+    management_notes: Optional[str] = None,
+) -> Dict[str, Any]:
     """Use FinBERT sentiment analysis on officer observations and management notes."""
     combined_text = f"{site_visit or ''} {management_notes or ''}".strip()
     if not combined_text:
         return {"sentiment": 0.0, "sentiment_category": "neutral", "impact_bps": 0, "flags": [], "raw_text": ""}
 
-    scores = await _score_texts_finbert([combined_text])
+    scores, _ = await _score_texts_finbert([combined_text])
     sentiment = round(scores[0], 4) if scores else 0.0
     impact_bps = 0
     flags: List[str] = []
@@ -299,13 +321,17 @@ async def analyze_primary_insights(site_visit: str = None, management_notes: str
     }
 
 
+# ===================================================================
+# Full Research Orchestrator
+# ===================================================================
+
 async def simulate_web_research(
     company_name: str,
     industry: str,
     revenue: float = 0,
     bureau_score: int = 700,
-    site_visit_insights: str = None,
-    management_interview_notes: str = None,
+    site_visit_insights: Optional[str] = None,
+    management_interview_notes: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Execute the full async secondary research workflow and combine it with primary insights."""
     news_data, ecourts_data, mca_data, primary_insights_analysis = await asyncio.gather(
@@ -346,6 +372,7 @@ async def simulate_web_research(
         "esg_score": esg_score,
         "sentiment_score": news_data.get("sentiment_score", 0.0),
         "sentiment_category": news_data.get("sentiment_category", "neutral"),
+        "sentiment_service_status": news_data.get("sentiment_service_status", "unknown"),
         "industry_outlook": macro["outlook"],
         "industry_growth_rate": macro["growth_rate"],
         "industry_volatility": macro["volatility"],
@@ -353,13 +380,10 @@ async def simulate_web_research(
         "regulatory_risk": mca_data.get("regulatory_risk", "Medium"),
         "management_quality": mca_data.get("management_quality", "Average"),
         "mca_filings": mca_data.get("filings", []),
+        "mca_source_status": mca_data.get("source_status", "unknown"),
         "news_headlines": news_data.get("news_headlines", []),
         "web_risk_score": web_risk_score,
         "industry_macro": macro,
         "primary_insights": primary_insights_analysis,
         "related_party_connections": [item.get("title") for item in mca_data.get("director_events", [])],
     }
-
-
-
-
