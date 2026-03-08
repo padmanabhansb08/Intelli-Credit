@@ -740,7 +740,6 @@ def _normalize_transaction_classifications(
         }
     return defaults
 
-
 def _categorize_transactions_with_gemini(records: Sequence[Mapping[str, Any]]) -> Tuple[Dict[int, Dict[str, Any]], str]:
     all_classifications: Dict[int, Dict[str, Any]] = {}
     service_status = "available"

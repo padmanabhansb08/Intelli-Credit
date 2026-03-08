@@ -302,6 +302,13 @@ async def run_full_analysis(
         recommended_limit=recommended_limit,
         risk_premium=risk_premium,
     )
+    
+    # 7.5 Inject summarized company profile directly into decision payload for CAM routing
+    decision_result["company_summary"] = company_profile_summary
+
+    # 7.6 Phase 6 - Five Cs of Credit Synthesis
+    from modules.llm_five_c_analyzer import synthesize_five_cs
+    decision_result["five_c_synthesis"] = synthesize_five_cs(features, web_research_data)
 
     audit_trail = generate_audit_trail(
         analysis_id=req.analysis_id,
