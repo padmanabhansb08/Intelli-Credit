@@ -10,7 +10,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
 
 from modules.decision_engine import generate_audit_trail, make_decision
-from modules.feature_store import list_analyses, load_features, save_features
+from modules.feature_store import list_analyses, load_features, save_features, save_full_analysis, load_full_analysis
 from modules.ingestion import (
     compute_financial_ratios,
     fetch_gst_from_databricks,
@@ -182,7 +182,14 @@ async def upload_document(
     tenant: Dict = Depends(get_tenant),
 ):
     """Upload and parse a document, returning a temporary analysis_id."""
+    filename = getattr(file, "filename", "") or ""
+    if not filename.lower().endswith((".pdf", ".csv")):
+        raise HTTPException(status_code=400, detail={"error": "Unsupported file type. Strictly .pdf and .csv are allowed."})
+
     content = await file.read()
+    if len(content) > 50 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail={"error": "File size exceeds 50MB limit."})
+
     analysis_id = analysis_id or str(uuid.uuid4())
     tenant_id = tenant["tenant_id"]
 
@@ -209,6 +216,8 @@ async def upload_document(
         "extracted_data": extracted,
     }
 
+
+from services.external_aggregator import ExternalDataAggregator
 
 @router.post("/analyze")
 async def run_full_analysis(
@@ -242,10 +251,42 @@ async def run_full_analysis(
     gst_bank_metrics = reconcile_gst_with_bank(gst_data, bank_data)
     features.update(gst_data)
     features.update(gst_bank_metrics)
+    
+    # ----------------------------------------------------
+    # REAL EXTERNAL API INTEGRATION
+    # ----------------------------------------------------
+    aggregator = ExternalDataAggregator()
+    # In a real app, gstin/cin/pan would be populated from the LOS/request payload.
+    # Using dummy/placeholder identifiers if not provided by the frontend.
+    ext_data = await aggregator.aggregate_borrower_facts(
+        company_name=req.customer.name,
+        company_id=req.customer.id,
+        gstin=f"27{req.customer.id}1Z5"[:15],  # Fake GSTIN based on ID for demo
+        cin=f"U74999MH2023PTC{req.customer.id}"[:21], # Fake CIN based on ID
+        pan=f"ABCDE{req.customer.id}F"[:10]    # Fake PAN based on ID
+    )
+    
+    # Merge the rigorous unified BorrowerFact into the feature set for the decision engine
+    features.update(ext_data)
+
     features["company_name"] = req.customer.name
     features["industry"] = req.customer.industry
     features["existing_exposure"] = req.exposure.internal + req.exposure.external + req.exposure.parent_child
-    features["years_in_business"] = max(1.0, round(float(bureau_data.get("credit_history_months", 60) or 60) / 12.0, 1))
+    
+    # Override bureau values with real API data if available
+    real_vintage = ext_data.get("cibil_credit_history_months", 0)
+    vintage_months = real_vintage if real_vintage > 0 else float(bureau_data.get("credit_history_months", 60) or 60)
+    features["years_in_business"] = max(1.0, round(vintage_months / 12.0, 1))
+    
+    if ext_data.get("cibil_commercial_score", -1) > 0:
+        # Scale CMR (typically 1-10) to 300-900 equivalent for the existing logic, or use directly if 300-900
+        cmr = ext_data["cibil_commercial_score"]
+        if cmr <= 10:
+            # Map CMR 1-10 to Bureau Score 300-900 (rough proxy: 1 is best)
+            features["bureau_score"] = int(900 - (cmr - 1) * (600 / 9))
+        else:
+            features["bureau_score"] = cmr
+
 
     web_research_data = await simulate_web_research(
         company_name=req.customer.name,
@@ -332,6 +373,8 @@ async def run_full_analysis(
 
     session["full_result"] = full_result
     session["status"] = "COMPLETED"
+
+    save_full_analysis(req.analysis_id, full_result)
 
     if tenant.get("webhook_url"):
         background_tasks.add_task(

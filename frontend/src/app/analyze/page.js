@@ -17,6 +17,9 @@ import RiskGauge from '@/components/RiskGauge';
 import ScenarioSimulator from '@/components/ScenarioSimulator';
 import ShapChart from '@/components/ShapChart';
 import { downloadCamPdf } from '@/lib/api';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/Card";
+import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
 
 const loadAnalysisResult = () => {
   if (typeof window === 'undefined') {
@@ -50,7 +53,7 @@ export default function AnalyzePage() {
   if (!result) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
-        <Activity className="w-8 h-8 text-blue-500 animate-spin" />
+        <Activity className="w-8 h-8 text-primary animate-spin" />
       </div>
     );
   }
@@ -78,18 +81,18 @@ export default function AnalyzePage() {
   };
 
   return (
-    <div className="max-w-7xl mx-auto pb-20 space-y-8 animate-in fade-in duration-700">
+    <div className="max-w-7xl mx-auto pb-20 space-y-8 animate-in mt-12 fade-in duration-700">
       <div className="flex items-center justify-between">
         <button
           onClick={() => router.push('/')}
-          className="flex items-center gap-2 text-slate-400 hover:text-white transition-colors text-sm font-medium"
+          className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors text-sm font-medium"
         >
           <ArrowLeft className="w-4 h-4" /> New Analysis
         </button>
         <div className="flex gap-3">
-          <div className="px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-xs font-mono text-slate-400">
+          <Badge variant="secondary" className="font-mono shadow-sm">
             ID: {analysis_id.split('-')[0]}
-          </div>
+          </Badge>
         </div>
       </div>
 
@@ -98,96 +101,108 @@ export default function AnalyzePage() {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         <div className="lg:col-span-8 space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="glass-card p-6 rounded-2xl flex flex-col justify-between">
-              <div>
-                <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
-                  <PieChartIcon className="w-5 h-5 text-blue-400" /> Composite Risk
-                </h3>
-              </div>
-              <RiskGauge
-                score={composite_risk.composite_score}
-                grade={composite_risk.grade}
-                label={composite_risk.grade_label}
-              />
-              <div className="pt-4 mt-6 border-t border-slate-800 text-center text-xs text-slate-500">
+            <Card className="flex flex-col justify-between shadow-sm">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <PieChartIcon className="w-5 h-5 text-primary" /> Composite Risk
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="flex-1 flex flex-col justify-center">
+                <RiskGauge
+                  score={composite_risk.composite_score}
+                  grade={composite_risk.grade}
+                  label={composite_risk.grade_label}
+                />
+              </CardContent>
+              <CardFooter className="pt-4 border-t border-border/50 text-center text-xs text-muted-foreground justify-center">
                 Blend: Financial (25%) + PD (30%) + External Risk (45%)
-              </div>
-            </div>
+              </CardFooter>
+            </Card>
 
-            <div className="glass-card p-6 rounded-2xl flex flex-col justify-between">
-              <div>
-                <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
-                  <Network className="w-5 h-5 text-teal-400" /> Web Intelligence
-                </h3>
-                <div className="space-y-4">
-                  <div className="flex justify-between items-center pb-2 border-b border-slate-800">
-                    <span className="text-sm text-slate-400">ESG Score</span>
-                    <span className={`font-mono ${web_research.esg_score > 60 ? 'text-emerald-400' : 'text-amber-400'}`}>{web_research.esg_score}/100</span>
-                  </div>
-                  <div className="flex justify-between items-center pb-2 border-b border-slate-800">
-                    <span className="text-sm text-slate-400">News Sentiment</span>
-                    <span className="font-mono text-slate-200">{web_research.sentiment_score > 0 ? '+' : ''}{web_research.sentiment_score.toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between items-center pb-2 border-b border-slate-800">
-                    <span className="text-sm text-slate-400">Litigation Exposure</span>
-                    <span className={`text-xs px-2 py-1 rounded font-bold ${web_research.litigation_flag ? 'bg-red-500/20 text-red-400 border border-red-500/30' : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'}`}>
-                      {web_research.litigation_flag ? 'DETECTED' : 'CLEAR'}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-slate-400">Management Quality</span>
-                    <span className="font-medium text-slate-200">{web_research.management_quality}</span>
-                  </div>
+            <Card className="flex flex-col justify-between shadow-sm">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Network className="w-5 h-5 text-indigo-500" /> Web Intelligence
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex justify-between items-center pb-3 border-b border-border/50">
+                  <span className="text-sm text-muted-foreground font-semibold">ESG Score</span>
+                  <span className={`font-mono font-bold ${web_research.esg_score > 60 ? 'text-success' : 'text-warning'}`}>{web_research.esg_score}/100</span>
                 </div>
-              </div>
-            </div>
+                <div className="flex justify-between items-center pb-3 border-b border-border/50">
+                  <span className="text-sm text-muted-foreground font-semibold">News Sentiment</span>
+                  <span className="font-mono font-bold text-foreground">{web_research.sentiment_score > 0 ? '+' : ''}{web_research.sentiment_score.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between items-center pb-3 border-b border-border/50">
+                  <span className="text-sm text-muted-foreground font-semibold">Litigation Exposure</span>
+                  <Badge variant={web_research.litigation_flag ? 'destructive' : 'success'} className="text-[10px]">
+                    {web_research.litigation_flag ? 'DETECTED' : 'CLEAR'}
+                  </Badge>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-muted-foreground font-semibold">Management Quality</span>
+                  <span className="font-semibold text-foreground">{web_research.management_quality}</span>
+                </div>
+              </CardContent>
+            </Card>
           </div>
 
-          <div className="glass-card p-6 rounded-2xl">
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                <ShieldCheck className="w-5 h-5 text-purple-400" />
+          <Card className="shadow-sm">
+            <CardHeader className="flex flex-row justify-between items-center">
+              <CardTitle className="flex items-center gap-2">
+                <ShieldCheck className="w-5 h-5 text-primary" />
                 Explainable AI (SHAP) - Key Risk Drivers
-              </h3>
-            </div>
-            <ShapChart data={decision?.risk_factors || []} />
-          </div>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ShapChart data={decision?.risk_factors || []} />
+            </CardContent>
+          </Card>
         </div>
 
         <div className="lg:col-span-4 space-y-6">
-          <div className="glass-card p-6 rounded-2xl border-blue-500/10 border">
-            <h3 className="text-lg font-bold text-white mb-6">Scenario Simulator</h3>
-            <ScenarioSimulator
-              baseStressResult={stress_test}
-              currentDscr={features.dscr}
-              pdScore={decision.summary.pd_score}
-            />
-          </div>
+          <Card className="shadow-sm border-primary/20">
+            <CardHeader>
+              <CardTitle>Scenario Simulator</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ScenarioSimulator
+                baseStressResult={stress_test}
+                currentDscr={features.dscr}
+                pdScore={decision.summary.pd_score}
+              />
+            </CardContent>
+          </Card>
 
-          <div className="glass-panel p-6 rounded-2xl flex flex-col items-center justify-center text-center space-y-4">
-            <div className="w-16 h-16 bg-blue-500/10 rounded-full flex items-center justify-center border border-blue-500/20">
-              <FileText className="w-8 h-8 text-blue-400" />
-            </div>
-            <div>
-              <h3 className="text-lg font-bold text-white">Full Credit Appraisal</h3>
-              <p className="text-sm text-slate-400 mt-1">Structured narrative generated from model outputs</p>
-            </div>
-            <button
-              onClick={handleDownload}
-              disabled={isDownloadingCam}
-              className="w-full py-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-white font-medium flex justify-center items-center gap-2 border border-slate-600 transition-colors disabled:opacity-60"
-            >
-              {isDownloadingCam ? <Activity className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-              {isDownloadingCam ? 'Preparing PDF...' : 'Download Final PDF'}
-            </button>
-          </div>
+          <Card className="flex flex-col items-center justify-center text-center space-y-4 shadow-sm bg-primary/5 border-primary/10">
+            <CardContent className="pt-6 pb-6 w-full flex flex-col items-center justify-center space-y-4">
+              <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center border border-primary/20 shadow-sm">
+                <FileText className="w-8 h-8 text-primary" />
+              </div>
+              <div>
+                <CardTitle className="text-xl">Full Credit Appraisal</CardTitle>
+                <CardDescription className="mt-1">Structured narrative generated from model outputs</CardDescription>
+              </div>
+              <Button
+                onClick={handleDownload}
+                disabled={isDownloadingCam}
+                className="w-full mt-4 flex justify-center items-center gap-2 transition-all"
+              >
+                {isDownloadingCam ? <Activity className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                {isDownloadingCam ? 'Preparing PDF...' : 'Download Final PDF'}
+              </Button>
+            </CardContent>
+          </Card>
 
-          <div className="glass-card p-6 rounded-2xl h-[400px] overflow-y-auto">
-            <h3 className="text-lg font-bold text-white mb-6 sticky top-0 bg-[#151A23] pb-2 z-10 border-b border-slate-800">
-              Governance Audit Log
-            </h3>
-            <AuditTrail trail={audit_trail} />
-          </div>
+          <Card className="h-[400px] overflow-hidden flex flex-col shadow-sm">
+            <CardHeader className="pb-3 border-b border-border bg-card z-10 sticky top-0">
+              <CardTitle>Governance Audit Log</CardTitle>
+            </CardHeader>
+            <CardContent className="flex-1 overflow-y-auto pt-4 pb-4">
+              <AuditTrail trail={audit_trail} />
+            </CardContent>
+          </Card>
         </div>
       </div>
     </div>

@@ -1,6 +1,6 @@
 ﻿from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from routers import analyze, cam, studio
+from routers import analyze, cam, studio, applications, research
 import os
 import uvicorn
 
@@ -25,7 +25,8 @@ app.add_middleware(
 
 app.include_router(analyze.router, prefix="/api", tags=["Analysis"])
 app.include_router(cam.router, prefix="/api/cam", tags=["CAM Generation"])
-app.include_router(studio.router, prefix="/api/studio", tags=["Decision Studio Execution"])
+app.include_router(applications.router, prefix="/api", tags=["Applications"])  # new
+app.include_router(research.router, prefix="/api", tags=["Research"])  # new
 
 
 @app.on_event("startup")

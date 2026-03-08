@@ -49,8 +49,8 @@ export default function RiskGauge({ score, grade, label }) {
                 {/* Value Display */}
                 <div className="absolute bottom-0 w-full text-center">
                     <div className="flex items-end justify-center gap-1">
-                        <span className="text-4xl font-black text-white">{percentage.toFixed(0)}</span>
-                        <span className="text-sm text-slate-400 mb-1">/100</span>
+                        <span className="text-4xl font-black text-foreground">{percentage.toFixed(0)}</span>
+                        <span className="text-sm text-muted-foreground mb-1">/100</span>
                     </div>
                 </div>
             </div>

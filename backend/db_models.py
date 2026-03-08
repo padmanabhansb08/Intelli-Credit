@@ -193,3 +193,65 @@ class DeadLetterExecution(Base):
 
     execution: Mapped["ExecutionRun"] = relationship("ExecutionRun", back_populates="dead_letter")
 
+
+class BorrowerEntity(Base):
+    __tablename__ = "borrower_entities"
+
+    id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    name: Mapped[str] = mapped_column(String(255), index=True)
+    industry: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    constitution: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, onupdate=utc_now)
+
+    applications: Mapped[list["CreditApplication"]] = relationship(
+        "CreditApplication",
+        back_populates="borrower",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+
+class CreditApplication(Base):
+    __tablename__ = "credit_applications"
+
+    id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    borrower_id: Mapped[str] = mapped_column(
+        String(128), ForeignKey("borrower_entities.id", ondelete="CASCADE"), index=True
+    )
+    status: Mapped[str] = mapped_column(String(64), default="INITIATED")
+    facility_amount: Mapped[float | None] = mapped_column(Float, nullable=True)
+    currency: Mapped[str] = mapped_column(String(16), default="INR")
+    purpose: Mapped[str | None] = mapped_column(Text, nullable=True)
+    term_months: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    recommended_limit: Mapped[float | None] = mapped_column(Float, nullable=True)
+    decision: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    grade: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    composite_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    pd_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, onupdate=utc_now)
+
+    borrower: Mapped["BorrowerEntity"] = relationship("BorrowerEntity", back_populates="applications")
+    audit_log: Mapped["ImmutableAuditLog | None"] = relationship(
+        "ImmutableAuditLog",
+        back_populates="application",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        uselist=False,
+    )
+
+
+class ImmutableAuditLog(Base):
+    __tablename__ = "immutable_audit_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    application_id: Mapped[str] = mapped_column(
+        String(128), ForeignKey("credit_applications.id", ondelete="CASCADE"), unique=True, index=True
+    )
+    exact_timestamp: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+    input_payload_json: Mapped[dict[str, Any]] = mapped_column(JSON)
+    ruleset_json: Mapped[dict[str, Any]] = mapped_column(JSON)
+    deterministic_outcome_json: Mapped[dict[str, Any]] = mapped_column(JSON)
+
+    application: Mapped["CreditApplication"] = relationship("CreditApplication", back_populates="audit_log")
