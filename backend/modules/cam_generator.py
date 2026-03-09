@@ -425,7 +425,6 @@ def generate_cam_content(analysis_data: Dict[str, Any]) -> Dict[str, str]:
     sections["final_recommendation"] = narrative or _fallback_final_recommendation(
         decision, recommended_limit, premium, analysis_data,
     )
-    )
 
     # ── Director Background Details ────────────────────────────────────
     dir_data = {
