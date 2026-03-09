@@ -345,7 +345,7 @@ async def run_full_analysis(
     )
     
     # 7.5 Inject summarized company profile directly into decision payload for CAM routing
-    decision_result["company_summary"] = company_profile_summary
+    decision_result["company_summary"] = web_research_data.get("company_profile", "")
 
     # 7.6 Phase 6 - Five Cs of Credit Synthesis
     from modules.llm_five_c_analyzer import synthesize_five_cs
