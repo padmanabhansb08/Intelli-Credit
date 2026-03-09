@@ -275,6 +275,25 @@ def _request_gemini_json(
         response = httpx.post(_gemini_endpoint(), json=payload, timeout=GEMINI_TIMEOUT_SEC)
         response.raise_for_status()
         body = response.json()
+        
+        # Check for error in response
+        if "error" in body:
+            error_msg = body.get("error", {}).get("message", "")
+            if "does not support image" in error_msg or "image" in error_msg.lower():
+                print(f"Gemini vision not supported, falling back to text-only: {error_msg}")
+                # Retry with text-only (no file_bytes)
+                if file_bytes:
+                    parts_text_only = [{"text": prompt}]
+                    if text_context:
+                        parts_text_only.append({"text": text_context[:12000]})
+                    payload_text_only = {
+                        "contents": [{"parts": parts_text_only}],
+                        "generationConfig": {"temperature": 0.1, "responseMimeType": "application/json"},
+                    }
+                    response = httpx.post(_gemini_endpoint(), json=payload_text_only, timeout=GEMINI_TIMEOUT_SEC)
+                    response.raise_for_status()
+                    body = response.json()
+        
         text_parts = body.get("candidates", [{}])[0].get("content", {}).get("parts", [])
         combined = "\n".join(part.get("text", "") for part in text_parts)
         return _extract_json_block(combined)

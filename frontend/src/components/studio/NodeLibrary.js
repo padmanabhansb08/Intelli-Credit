@@ -10,6 +10,8 @@ import {
   Play,
   Share2,
   ShieldEllipsis,
+  Building2,
+  AlertTriangle,
 } from 'lucide-react';
 
 export const NODE_LIBRARY_GROUPS = [
@@ -36,6 +38,18 @@ export const NODE_LIBRARY_GROUPS = [
         label: 'Document Parser',
         description: 'Extract fields from GST, ITR, annual report, and OCR-derived payloads.',
         icon: FileCheck,
+      },
+      {
+        type: 'mcaFilingSyncNode',
+        label: 'MCA V3 Gateway',
+        description: 'Synchronize corporate director footprints from MCA V3.',
+        icon: Building2,
+      },
+      {
+        type: 'epfoAnomalyNode',
+        label: 'EPFO Anomalies',
+        description: 'Fetch and parse EPFO compliance records for active employees.',
+        icon: AlertTriangle,
       },
     ],
   },

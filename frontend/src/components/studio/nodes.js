@@ -287,9 +287,79 @@ export const ExplainableAINode = memo(({ data, selected }) => {
   );
 });
 
+export const MCAFilingSyncNode = memo(({ data, selected }) => {
+  const runtime = getRuntime(data);
+  const tone = runtimeTone[runtime.status] || runtimeTone.idle;
+
+  return (
+    <div className={`relative w-72 bg-card rounded-xl shadow-md border-2 ${selected ? 'ring-2 ring-primary/30 shadow-lg' : ''} ${tone.ring} flex items-stretch overflow-hidden transition-all text-left`}>
+      <RuntimeBadge data={data} />
+      <div className="w-1.5 bg-sky-500 opacity-80 shrink-0"></div>
+
+      <div className="p-3 flex-1 flex flex-col gap-2 pr-20">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-lg bg-sky-500/10 border border-sky-500/20 flex items-center justify-center text-sky-500 shrink-0">
+            <Building2 className="w-5 h-5" />
+          </div>
+          <div className="flex flex-col min-w-0">
+            <span className="text-[10px] text-sky-500 font-bold uppercase tracking-wider truncate">Regulator Sync</span>
+            <span className="text-sm font-semibold text-foreground truncate">{data.label || 'MCA V3 Gateway'}</span>
+          </div>
+        </div>
+
+        {data.cinTarget && (
+          <div className="mt-2 bg-secondary/20 rounded-md p-2 text-xs font-mono text-muted-foreground truncate">
+            Target CIN: {data.cinTarget}
+          </div>
+        )}
+      </div>
+
+      <CustomHandle type="target" position={Position.Top} colorClass="bg-sky-500/50" />
+      <CustomHandle type="source" position={Position.Bottom} colorClass="bg-sky-500" />
+      <ErrorHandle />
+    </div>
+  );
+});
+
+export const EPFOAnomalyNode = memo(({ data, selected }) => {
+  const runtime = getRuntime(data);
+  const tone = runtimeTone[runtime.status] || runtimeTone.idle;
+
+  return (
+    <div className={`relative w-72 bg-card rounded-xl shadow-md border-2 ${selected ? 'ring-2 ring-primary/30 shadow-lg' : ''} ${tone.ring} flex items-stretch overflow-hidden transition-all text-left`}>
+      <RuntimeBadge data={data} />
+      <div className="w-1.5 bg-amber-500 opacity-80 shrink-0"></div>
+
+      <div className="p-3 flex-1 flex flex-col gap-2 pr-20">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-500 shrink-0">
+            <AlertTriangle className="w-5 h-5" />
+          </div>
+          <div className="flex flex-col min-w-0">
+            <span className="text-[10px] text-amber-500 font-bold uppercase tracking-wider truncate">Compliance Check</span>
+            <span className="text-sm font-semibold text-foreground truncate">{data.label || 'EPFO Anomalies'}</span>
+          </div>
+        </div>
+
+        {data.employerIdTarget && (
+          <div className="mt-2 bg-secondary/20 rounded-md p-2 text-xs font-mono text-muted-foreground truncate">
+            EPFO ID: {data.employerIdTarget}
+          </div>
+        )}
+      </div>
+
+      <CustomHandle type="target" position={Position.Top} colorClass="bg-amber-500/50" />
+      <CustomHandle type="source" position={Position.Bottom} colorClass="bg-amber-500" />
+      <ErrorHandle />
+    </div>
+  );
+});
+
 TriggerNode.displayName = 'TriggerNode';
 DocumentClassificationNode.displayName = 'DocumentClassificationNode';
 IntegrationNode.displayName = 'IntegrationNode';
 ConditionNode.displayName = 'ConditionNode';
 ExplainableAINode.displayName = 'ExplainableAINode';
+MCAFilingSyncNode.displayName = 'MCAFilingSyncNode';
+EPFOAnomalyNode.displayName = 'EPFOAnomalyNode';
 

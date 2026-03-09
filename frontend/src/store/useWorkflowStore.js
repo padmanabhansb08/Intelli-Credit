@@ -119,6 +119,8 @@ const initialNodes = hydrateNodes([
     position: { x: 320, y: 80 },
     data: {
       label: 'Inbound Proposal Payload',
+      triggerType: 'manual',
+      payloadTemplate: '{}'
     },
   },
   {
@@ -128,6 +130,9 @@ const initialNodes = hydrateNodes([
     data: {
       label: 'Databricks Document Parse',
       confidence: 94,
+      model: 'llama3-70b-8192',
+      promptTemplate: 'Extract entities from document.',
+      confidenceThreshold: 85.0,
       extractedFields: [
         { key: 'Corporation', value: 'Tesla Inc.' },
         { key: 'GrossMargin', value: '18.2%' },
@@ -177,6 +182,9 @@ const initialNodes = hydrateNodes([
     position: { x: 110, y: 850 },
     data: {
       label: 'TreeSHAP Attributions',
+      modelReference: 'credit_lgbm_v2',
+      topK: 5,
+      baselineDataset: 'q3_approved_loans',
       shapValues: [
         { name: 'Debt-to-Income', impact: 1.84 },
         { name: 'Years in Business', impact: -0.65 },

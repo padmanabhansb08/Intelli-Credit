@@ -66,44 +66,6 @@ def fetch_mock_dag_for_policy(policy_id: str) -> dict:
 # The -draft and /execute-draft endpoints are defined first, then the wildcard {policy_id} comes last
 
 
-@router.post("-draft", response_model=Dict[str, Any], status_code=status.HTTP_200_OK)
-async def execute_draft_workflow(payload: DraftExecutionPayload):
-    """
-    Stateless / Ephemeral execution pipeline for the Decision Studio Preview.
-    Validates the DAG mathematically and computes it entirely in memory.
-    """
-    
-    # 1. topological Sort (Kahn's Algorithm) to find loops
-    cycle_nodes = check_for_cycles(payload.nodes, payload.edges)
-    if cycle_nodes:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={
-                "error": "Invalid Workflow: Cycle detected in nodes.",
-                "cycle_nodes": cycle_nodes
-            }
-        )
-        
-    engine = ExecutionEngine(
-        dag_nodes=[node.dict() for node in payload.nodes],
-        dag_edges=[edge.dict() for edge in payload.edges]
-    )
-    
-    # Execute the Engine asynchronously across the DAG levels
-    try:
-        final_context_state = await engine.execute(payload.trigger_payload.dict())
-        return {
-            "status": "success",
-            "policy_id": "ephemeral_draft",
-            "engine_state": final_context_state
-        }
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Engine execution failed: {str(e)}"
-        )
-
-
 @router.post("/execute-draft", response_model=Dict[str, Any], status_code=status.HTTP_200_OK)
 async def execute_draft_workflow_v2(payload: DraftExecutionPayload):
     """

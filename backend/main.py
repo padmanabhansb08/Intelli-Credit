@@ -1,6 +1,6 @@
 ﻿from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from routers import analyze, cam, studio, applications, research
+from routers import analyze, cam, studio, applications, research, engine, execution
 import os
 import uvicorn
 
@@ -17,7 +17,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["http://localhost:3000", "http://localhost:5173", "http://127.0.0.1:3000", "http://127.0.0.1:5173"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -27,6 +27,8 @@ app.include_router(analyze.router, prefix="/api", tags=["Analysis"])
 app.include_router(cam.router, prefix="/api/cam", tags=["CAM Generation"])
 app.include_router(applications.router, prefix="/api", tags=["Applications"])  # new
 app.include_router(research.router, prefix="/api", tags=["Research"])  # new
+app.include_router(engine.router, prefix="/api/v1/engine", tags=["Engine Deployment"])
+app.include_router(execution.router, prefix="/api/v1/engine/execute", tags=["Engine Execution"])
 
 
 @app.on_event("startup")

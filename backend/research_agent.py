@@ -1,15 +1,15 @@
 import os
 from typing import List, Dict
 import httpx
-from langchain.llms import OpenAI
-from langchain.prompts import PromptTemplate
-from tavily import TavilySearch
+from langchain_openai import OpenAI
+from langchain_core.prompts import PromptTemplate
+from tavily import TavilyClient
 
 class ResearchAgent:
     def __init__(self):
         # Initialize LLM (ensure OPENAI_API_KEY is set in environment)
         self.llm = OpenAI(model="gpt-4o-mini")
-        self.search = TavilySearch(api_key=os.getenv("TAVILY_API_KEY"))
+        self.search = TavilyClient(api_key=os.getenv("TAVILY_API_KEY"))
 
     def _search(self, query: str) -> List[Dict]:
         """Perform a Tavily search and return result list."""

@@ -17,7 +17,9 @@ import {
   Trash2,
   Workflow,
   X,
+  AlertCircle
 } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import NextLink from 'next/link';
 import DataMappingModal from '@/components/modals/DataMappingModal';
 import ExecutionPanel from '@/components/studio/ExecutionPanel';
@@ -202,6 +204,7 @@ export default function DecisionStudio() {
   const [isEstimating, setIsEstimating] = useState(false);
   const [isTracePanelOpen, setIsTracePanelOpen] = useState(true);
   const [isLibraryCollapsed, setIsLibraryCollapsed] = useState(false);
+  const [toastMessage, setToastMessage] = useState(null);
   const socketRef = useRef(null);
   const deferredLogs = useDeferredValue(executionLogs);
 
@@ -295,7 +298,7 @@ export default function DecisionStudio() {
 
       beginExecution({ executionId: response.policy_id || workflowId });
       setIsTracePanelOpen(true);
-      
+
       // For ephemeral draft execution, we simulate the execution flow
       if (response.status === 'success') {
         openExecutionSocket(`/ws/execution/${response.policy_id}`);
@@ -305,7 +308,7 @@ export default function DecisionStudio() {
 
       let errorTitle = 'Execution Failed';
       let errorMessage = error.message;
-      
+
       // Check for specific error types
       if (error.message.includes('Cycle detected') || error.message.includes('cycle')) {
         errorTitle = 'Invalid Workflow Graph';
@@ -316,7 +319,7 @@ export default function DecisionStudio() {
       }
 
       setWebSocketStatus('error');
-      
+
       // Show error in execution panel
       applyExecutionEvent({
         type: 'execution.error',
@@ -324,9 +327,10 @@ export default function DecisionStudio() {
         message: `${errorTitle}: ${errorMessage}`,
         timestamp: new Date().toISOString()
       });
-      
+
       // Show toast notification
-      alert(`${errorTitle}\n\n${errorMessage}`);
+      setToastMessage(`${errorTitle}: ${errorMessage}`);
+      setTimeout(() => setToastMessage(null), 5000);
     } finally {
       setIsDeploying(false);
     }
@@ -449,6 +453,21 @@ export default function DecisionStudio() {
       />
 
       {isMappingModalOpen && <DataMappingModal />}
+
+      {/* Dynamic Error Toast */}
+      <AnimatePresence>
+        {toastMessage && (
+          <motion.div
+            initial={{ opacity: 0, y: -20, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95, filter: "blur(4px)" }}
+            className="absolute top-6 left-1/2 -translate-x-1/2 z-[200] max-w-md bg-rose-500/95 text-white px-5 py-3 rounded-2xl shadow-xl flex items-center gap-3 backdrop-blur-md border border-rose-400/30 font-sans"
+          >
+            <AlertCircle className="w-5 h-5 flex-shrink-0 text-rose-100" />
+            <span className="text-sm font-medium leading-relaxed drop-shadow-sm">{toastMessage}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

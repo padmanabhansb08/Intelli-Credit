@@ -1,0 +1,25 @@
+__pycache__/
+*.pyc
+*.pyo
+*.log
+.env
+.idea/
+.vscode/
+
+# Node
+node_modules/
+.next/
+out/
+build/
+dist/
+
+# Python
+.venv/
+venv/
+env/
+*.db
+
+# Data
+backend/data/analyses/
+backend/data/features/
+*.pdf
