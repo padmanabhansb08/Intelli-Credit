@@ -1,0 +1,31 @@
+{
+  "analysis_id": "LOS-ouvsfgwvs",
+  "timestamp": "2026-03-02T16:38:56.649479",
+  "features": {
+    "revenue": 1,
+    "revenue_growth": 0.0,
+    "ebitda": 0,
+    "ebitda_margin": 0.0,
+    "total_debt": 0,
+    "total_equity": 1,
+    "debt_equity_ratio": 0.0,
+    "cash_flow": 0,
+    "annual_debt_service": 1.0,
+    "dscr": 0.0,
+    "collateral_value": 0,
+    "loan_amount_requested": 0.0,
+    "collateral_coverage": 0,
+    "bureau_score": 700,
+    "num_past_defaults": 0,
+    "cash_flow_stability": 0.7,
+    "interest_expense": 1,
+    "depreciation": 0,
+    "current_ratio": 1.5,
+    "gstr_3b_revenue": 0.0,
+    "gstr_2a_itc_claimed": 0.0,
+    "circular_trading_flag": false,
+    "sales_inflation_risk": 0.0,
+    "company_name": "",
+    "industry": "Manufacturing"
+  }
+}

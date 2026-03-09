@@ -1,0 +1,73 @@
+{
+  "fairness_metrics": {
+    "promoter_gender": {
+      "groups": {
+        "Female": {
+          "count": 822,
+          "actual_default_rate": 0.0474,
+          "predicted_default_rate": 0.0401,
+          "mean_pd": 0.0413,
+          "approval_rate": 0.9599
+        },
+        "Male": {
+          "count": 991,
+          "actual_default_rate": 0.0454,
+          "predicted_default_rate": 0.0394,
+          "mean_pd": 0.0409,
+          "approval_rate": 0.9606
+        },
+        "Non-Binary": {
+          "count": 187,
+          "actual_default_rate": 0.0321,
+          "predicted_default_rate": 0.0267,
+          "mean_pd": 0.0294,
+          "approval_rate": 0.9733
+        }
+      },
+      "disparate_impact_ratio": 0.9862,
+      "fair_lending_compliant": true
+    },
+    "region": {
+      "groups": {
+        "North": {
+          "count": 384,
+          "actual_default_rate": 0.0391,
+          "predicted_default_rate": 0.0234,
+          "mean_pd": 0.0272,
+          "approval_rate": 0.9766
+        },
+        "Central": {
+          "count": 403,
+          "actual_default_rate": 0.0645,
+          "predicted_default_rate": 0.0571,
+          "mean_pd": 0.0573,
+          "approval_rate": 0.9429
+        },
+        "West": {
+          "count": 380,
+          "actual_default_rate": 0.0474,
+          "predicted_default_rate": 0.0421,
+          "mean_pd": 0.0424,
+          "approval_rate": 0.9579
+        },
+        "South": {
+          "count": 419,
+          "actual_default_rate": 0.0358,
+          "predicted_default_rate": 0.0334,
+          "mean_pd": 0.0352,
+          "approval_rate": 0.9666
+        },
+        "East": {
+          "count": 414,
+          "actual_default_rate": 0.0386,
+          "predicted_default_rate": 0.0362,
+          "mean_pd": 0.0378,
+          "approval_rate": 0.9638
+        }
+      },
+      "disparate_impact_ratio": 0.9655,
+      "fair_lending_compliant": true
+    }
+  },
+  "mitigation_strategy": "Model uses only financial and credit-relevant features. Protected attributes (gender, region) are excluded from model inputs. Post-hoc bias monitoring ensures disparate impact ratio >= 0.8 (80% rule)."
+}
