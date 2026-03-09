@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { useAuth } from "@/context/AuthContext";
 import { motion } from "framer-motion";
 import {
     ArrowLeft, Download, FileText, Activity, ShieldCheck,
@@ -23,6 +24,7 @@ const SkeletonPulse = ({ className }) => (
 export default function CAMTerminalView() {
     const { id } = useParams();
     const router = useRouter();
+    const { user } = useAuth();
     const [authToken, setAuthToken] = useState(null);
     const [analysisData, setAnalysisData] = useState(null);
     const [isLoadingJSON, setIsLoadingJSON] = useState(true);
@@ -30,10 +32,13 @@ export default function CAMTerminalView() {
     const [isGenerating, setIsGenerating] = useState(false);
 
     useEffect(() => {
-        const token = localStorage.getItem("auth_token") || "sk_live_hdfc_9x2b";
-        setAuthToken(token);
-        fetchAnalysisData(token);
-    }, [id]);
+        if (user) {
+            user.getIdToken().then(token => {
+                setAuthToken(token);
+                fetchAnalysisData(token);
+            });
+        }
+    }, [id, user]);
 
     const fetchAnalysisData = async (token) => {
         setIsLoadingJSON(true);
@@ -89,11 +94,16 @@ export default function CAMTerminalView() {
 
     const downloadPDFHandler = async () => {
         setIsGenerating(true);
+        let currentToken = authToken;
+        if (user) {
+            currentToken = await user.getIdToken();
+        }
+
         try {
             const response = await fetch(`${NEXT_PUBLIC_API_URL}/cam/generate/${id}`, {
                 method: 'POST',
                 headers: {
-                    'Authorization': `Bearer ${authToken}`
+                    'Authorization': `Bearer ${currentToken}`
                 }
             });
             if (!response.ok) throw new Error("Failed to generate PDF");

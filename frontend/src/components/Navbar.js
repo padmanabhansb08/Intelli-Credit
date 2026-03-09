@@ -4,32 +4,11 @@ import { useState, useEffect } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { LogOut, User, Key, ShieldCheck } from "lucide-react";
+import { useAuth } from "@/context/AuthContext";
 
 export default function Navbar() {
   const pathname = usePathname();
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [user, setUser] = useState(null);
-
-  useEffect(() => {
-    // Check for auth token on mount
-    const token = localStorage.getItem("auth_token");
-    if (token === "sk_live_hdfc_9x2b") {
-      setIsAuthenticated(true);
-      setUser({ name: "Credit Officer", email: "officer@intelli-credit.com", role: "Underwriter" });
-    }
-  }, []);
-
-  const handleLogin = () => {
-    localStorage.setItem("auth_token", "sk_live_hdfc_9x2b");
-    setIsAuthenticated(true);
-    setUser({ name: "Credit Officer", email: "officer@intelli-credit.com", role: "Underwriter" });
-  };
-
-  const handleLogout = () => {
-    localStorage.removeItem("auth_token");
-    setIsAuthenticated(false);
-    setUser(null);
-  };
+  const { user, signOut } = useAuth();
 
   const navLinks = [
     { name: "Workspace", href: "/" },
@@ -81,11 +60,26 @@ export default function Navbar() {
 
         {/* Auth Section */}
         <div className="flex items-center gap-4">
-          <div className="relative group cursor-pointer" title="Credit Officer: NR">
-            <div className="w-10 h-10 rounded-full bg-secondary/80 border border-border flex items-center justify-center text-foreground font-bold text-sm shadow-sm backdrop-blur-md transition-all duration-300 group-hover:bg-secondary group-hover:border-primary/50">
-              NR
+          {user ? (
+            <div className="flex items-center gap-3">
+              <button
+                onClick={signOut}
+                className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors flex items-center gap-2"
+              >
+                <LogOut size={16} />
+                Sign Out
+              </button>
+              <div className="relative group cursor-pointer" title={user.email}>
+                <div className="w-10 h-10 rounded-full bg-secondary/80 border border-border flex items-center justify-center text-foreground font-bold text-sm shadow-sm backdrop-blur-md transition-all duration-300 group-hover:bg-secondary group-hover:border-primary/50">
+                  {user.email ? user.email.substring(0, 2).toUpperCase() : "US"}
+                </div>
+              </div>
             </div>
-          </div>
+          ) : (
+            <Link href="/login" className="text-sm font-medium text-primary hover:text-primary/80 transition-colors">
+              Sign In
+            </Link>
+          )}
         </div>
       </div>
     </header>

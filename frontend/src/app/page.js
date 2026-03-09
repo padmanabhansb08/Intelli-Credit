@@ -12,6 +12,7 @@ import {
   Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, ReferenceLine
 } from "recharts";
+import { useAuth } from "@/context/AuthContext";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -21,6 +22,7 @@ const NEXT_PUBLIC_API_URL = "http://localhost:8000/api";
 
 export default function Workspace() {
   const router = useRouter();
+  const { user } = useAuth();
   const [authToken, setAuthToken] = useState(null);
 
   // App State
@@ -44,14 +46,12 @@ export default function Workspace() {
   const [analysisResult, setAnalysisResult] = useState(null);
 
   useEffect(() => {
-    let token = localStorage.getItem("auth_token");
-    if (!token) {
-      // Auto-inject mock token since we removed the manual Sign-In button
-      token = "sk_live_hdfc_9x2b";
-      localStorage.setItem("auth_token", token);
+    if (user) {
+      user.getIdToken().then(token => setAuthToken(token));
+    } else {
+      setAuthToken(null);
     }
-    setAuthToken(token);
-  }, []);
+  }, [user]);
 
   // --- DROPZONE FOR UPLOAD ---
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
@@ -68,10 +68,15 @@ export default function Workspace() {
         formData.append("doc_type", file.type.includes("pdf") ? "financial_pdf" : "bank_csv");
         if (analysisId) formData.append("analysis_id", analysisId);
 
+        let currentToken = authToken;
+        if (user) {
+          currentToken = await user.getIdToken();
+        }
+
         const res = await fetch(`${NEXT_PUBLIC_API_URL}/upload`, {
           method: "POST",
           headers: {
-            "Authorization": `Bearer ${authToken}`
+            "Authorization": `Bearer ${currentToken}`
           },
           body: formData
         });
@@ -116,12 +121,17 @@ export default function Workspace() {
       approval: { risk_dept: "Pending", legal_dept: "Pending", compliance: "Pending" }
     };
 
+    let currentToken = authToken;
+    if (user) {
+      currentToken = await user.getIdToken();
+    }
+
     try {
       const res = await fetch(`${NEXT_PUBLIC_API_URL}/analyze`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${authToken}`
+          "Authorization": `Bearer ${currentToken}`
         },
         body: JSON.stringify(payload)
       });

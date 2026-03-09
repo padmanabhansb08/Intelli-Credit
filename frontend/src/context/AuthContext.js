@@ -15,24 +15,30 @@ export const AuthProvider = ({ children }) => {
   const router = useRouter();
   const pathname = usePathname();
 
+  // 1. Initialize Firebase Auth State
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setUser(user);
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
       setLoading(false);
-      
-      // Redirect away from login if authenticated
-      if (user && pathname === '/login') {
-        router.push('/');
-      }
-
-      // Redirect to login if not authenticated and not on public pages
-      if (!user && pathname !== '/login') {
-        router.push('/login');
-      }
     });
 
     return () => unsubscribe();
-  }, [pathname, router]);
+  }, []); // Run exactly once on mount so it doesn't get cancelled
+
+  // 2. Handle Route Protection & Redirects
+  useEffect(() => {
+    if (loading) return; // Wait until Firebase determines active session
+
+    // Redirect away from login if already authenticated
+    if (user && pathname === '/login') {
+      router.push('/');
+    }
+
+    // Redirect to login if not authenticated and trying to access protected pages
+    if (!user && pathname !== '/login') {
+      router.push('/login');
+    }
+  }, [user, loading, pathname, router]);
 
   const signOut = async () => {
     await firebaseSignOut(auth);

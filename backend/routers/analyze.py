@@ -41,16 +41,29 @@ API_KEYS = {
 }
 
 
+from security.auth import verify_firebase_token
+
 async def get_tenant(credentials: HTTPAuthorizationCredentials = Security(security)) -> Dict[str, Any]:
-    """Dependency to extract and validate B2B tenant from API Key."""
+    """Dependency to extract and validate B2B tenant from API Key or Firebase Auth."""
     if not credentials:
         return {"tenant_id": "tnt_b2c_individual", "tier": "free", "webhook_url": None}
 
     token = credentials.credentials
     tenant = API_KEYS.get(token)
-    if not tenant:
-        raise HTTPException(status_code=401, detail="Invalid API Key")
-    return tenant
+    
+    if tenant:
+        return tenant
+        
+    # If not a static API key, attempt to verify as a Firebase JWT
+    try:
+        decoded_token = verify_firebase_token(credentials)
+        return {
+            "tenant_id": decoded_token.get("uid", "firebase_user"),
+            "tier": "enterprise",
+            "webhook_url": None
+        }
+    except Exception as e:
+        raise HTTPException(status_code=401, detail="Invalid Authentication Token")
 
 
 async def dispatch_webhook(webhook_url: str, analysis_id: str, decision: str, limit: float):

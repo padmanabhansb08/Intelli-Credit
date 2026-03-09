@@ -6,6 +6,7 @@ import Link from "next/link";
 import { Plus } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import { useTabSync } from "@/hooks/useTabSync";
+import { AuthProvider } from "@/context/AuthContext";
 import "./globals.css";
 
 const inter = Inter({ subsets: ["latin"] });
@@ -33,12 +34,14 @@ export default function RootLayout({ children }) {
         </div>
 
         <div className="relative z-10 flex flex-col min-h-screen">
-          <Navbar />
+          <AuthProvider>
+            <Navbar />
 
 
-          <main className="flex-1 container mx-auto px-4 sm:px-6 py-8">
-            {children}
-          </main>
+            <main className="flex-1 container mx-auto px-4 sm:px-6 py-8">
+              {children}
+            </main>
+          </AuthProvider>
         </div>
       </body>
     </html>
