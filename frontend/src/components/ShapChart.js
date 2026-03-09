@@ -18,12 +18,12 @@ function CustomTooltip({ active, payload }) {
   const isRiskIncrease = impactIncreasesRisk(point.impact);
 
   return (
-    <div className="bg-[#1e293b] border border-slate-700 p-3 rounded-lg shadow-xl">
-      <p className="text-sm font-bold text-white mb-1">{point.name}</p>
-      <p className={`text-xs font-medium ${isRiskIncrease ? 'text-red-400' : 'text-emerald-400'}`}>
+    <div className="bg-card border border-border p-3 rounded-lg shadow-xl">
+      <p className="text-sm font-bold text-foreground mb-1">{point.name}</p>
+      <p className={`text-xs font-bold ${isRiskIncrease ? 'text-destructive' : 'text-success'}`}>
         SHAP Value: {point.value > 0 ? '+' : ''}{point.displayValue}
       </p>
-      <p className="text-xs text-slate-400 mt-1">
+      <p className="text-xs text-muted-foreground mt-1 font-medium">
         {isRiskIncrease ? 'Increases default probability' : 'Decreases default probability'}
       </p>
     </div>
@@ -32,7 +32,7 @@ function CustomTooltip({ active, payload }) {
 
 export default function ShapChart({ data }) {
   if (!data || data.length === 0) {
-    return <div className="text-slate-500 text-sm">No explainability data available.</div>;
+    return <div className="text-muted-foreground text-sm font-medium">No explainability data available.</div>;
   }
 
   const chartData = data.map((item) => {
@@ -59,11 +59,11 @@ export default function ShapChart({ data }) {
             type="category"
             axisLine={false}
             tickLine={false}
-            tick={{ fill: '#94a3b8', fontSize: 12, className: 'font-medium' }}
+            tick={{ fill: 'currentColor', fontSize: 12, className: 'font-medium text-muted-foreground' }}
             width={120}
           />
-          <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(255,255,255,0.02)' }} />
-          <ReferenceLine x={0} stroke="#334155" />
+          <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(255,255,255,0.05)' }} />
+          <ReferenceLine x={0} stroke="currentColor" className="text-border" />
           <Bar dataKey="value" radius={[0, 4, 4, 0]} barSize={20}>
             {chartData.map((entry, index) => (
               <Cell key={`cell-${index}`} fill={entry.value > 0 ? '#ef4444' : '#10b981'} />

@@ -258,6 +258,35 @@ def _fallback_final_recommendation(
     )
 
 
+def _fallback_director_background(web: Dict[str, Any]) -> str:
+    return (
+        f"Management Quality: {web.get('management_quality', 'N/A')}\n"
+        f"Litigation Visibility: {'Yes' if web.get('litigation_flag') else 'No'}\n\n"
+        f"Director background is assessed based on public registry checks, eCourts litigation history, and general management track record."
+    )
+
+
+def _fallback_gst_variance(features: Dict[str, Any]) -> str:
+    return (
+        f"GSTR-3B Revenue: {_fmt_inr(features.get('gstr_3b_revenue', 0))}\n"
+        f"Bank Inflows Considered: {_fmt_inr(features.get('bank_inflows_considered', features.get('total_inflows', 0)))}\n"
+        f"GST-Bank Gap: {_fmt_inr(features.get('gst_bank_gap', 0))}\n"
+        f"GST-Bank Gap (%): {_fmt_num(features.get('gst_bank_gap_pct', 0), 2)}%\n\n"
+        f"This section triangulates reported operational revenue via GST against actual cash flows realized in the primary operating accounts."
+    )
+
+
+def _fallback_explainability(decision: Dict[str, Any], web: Dict[str, Any], factors: List[Dict[str, Any]]) -> str:
+    status = decision.get("decision", "PENDING")
+    rationale = decision.get("reasoning", ["No specific rationale provided."])
+    litigation = "High litigation risk identified." if web.get("litigation_flag") else "No major litigation risk found."
+    factor_str = ", ".join([f"{f['factor']} ({f['impact']})" for f in factors[:3]])
+    return (
+        f"The application was {status} explicitly due to the following rationale: {' '.join(rationale)}. "
+        f"{litigation} Top machine learning drivers synthesizing this decision include: {factor_str}."
+    )
+
+
 # ===================================================================
 # Main generator
 # ===================================================================
@@ -397,6 +426,35 @@ def generate_cam_content(analysis_data: Dict[str, Any]) -> Dict[str, str]:
         decision, recommended_limit, premium, analysis_data,
     )
     )
+
+    # ── Director Background Details ────────────────────────────────────
+    dir_data = {
+        "Management Quality": web.get("management_quality", "N/A"),
+        "Litigation Flag": "Yes" if web.get("litigation_flag") else "No"
+    }
+    narrative = _request_gemini_narrative(_build_cam_section_prompt("Director Background Details", dir_data))
+    sections["director_background"] = narrative or _fallback_director_background(web)
+
+    # ── GST vs. Bank Statement Variance ────────────────────────────────
+    gst_data = {
+        "GSTR-3B Revenue": _fmt_inr(features.get("gstr_3b_revenue", 0)),
+        "Bank Inflows Considered": _fmt_inr(features.get("bank_inflows_considered", features.get("total_inflows", 0))),
+        "GST-Bank Gap": _fmt_inr(features.get("gst_bank_gap", 0)),
+        "GST-Bank Gap (%)": f"{_fmt_num(features.get('gst_bank_gap_pct', 0), 2)}%",
+    }
+    narrative = _request_gemini_narrative(_build_cam_section_prompt("GST vs. Bank Statement Triangulation Variance", gst_data))
+    sections["gst_variance"] = narrative or _fallback_gst_variance(features)
+
+    # ── Decision Logic / Explainability ────────────────────────────────
+    expl_data = {
+        "Decision Status": decision.get("decision", "PENDING"),
+        "Primary Rationale": " | ".join(decision.get("reasoning", [])),
+        "Litigation Risk Indicator": "High" if web.get("litigation_flag") else "Low",
+        "GST Variance": f"{_fmt_num(features.get('gst_bank_gap_pct', 0), 2)}%",
+    }
+    # Provide SHAP factors here to make the explanation extremely specific
+    narrative = _request_gemini_narrative(_build_cam_section_prompt("Decision Logic / Explainability", expl_data, shap_factors=risk_factors))
+    sections["explainability"] = narrative or _fallback_explainability(decision, web, risk_factors)
 
     return sections
 

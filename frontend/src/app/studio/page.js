@@ -29,6 +29,8 @@ import {
   ExplainableAINode,
   IntegrationNode,
   TriggerNode,
+  MCAFilingSyncNode,
+  EPFOAnomalyNode,
 } from '@/components/studio/nodes';
 import {
   buildStudioWebSocketUrl,
@@ -43,6 +45,8 @@ const nodeTypes = {
   conditionNode: ConditionNode,
   documentClassificationNode: DocumentClassificationNode,
   explainableAINode: ExplainableAINode,
+  mcaFilingSyncNode: MCAFilingSyncNode,
+  epfoAnomalyNode: EPFOAnomalyNode,
 };
 
 const createNodeId = (type) => `${type}-${(typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2, 11)).slice(0, 8)}`;
@@ -64,6 +68,7 @@ const buildNodeBlueprint = (type, position) => {
         data: {
           label: 'Inbound Proposal Trigger',
           triggerType: 'manual',
+          payloadTemplate: '{}'
         },
       };
     case 'documentClassificationNode':
@@ -72,6 +77,9 @@ const buildNodeBlueprint = (type, position) => {
         data: {
           label: 'Databricks Document Parse',
           confidence: 96,
+          model: 'llama3-70b-8192',
+          promptTemplate: 'Extract entities from document.',
+          confidenceThreshold: 85.0,
           extractedFields: [
             { key: 'Applicant', value: 'ACME Corp' },
             { key: 'RequestedLimit', value: '250000' },
@@ -128,11 +136,33 @@ const buildNodeBlueprint = (type, position) => {
         ...baseNode,
         data: {
           label: 'TreeSHAP Attributions',
+          modelReference: 'credit_lgbm_v2',
+          topK: 5,
+          baselineDataset: 'q3_approved_loans',
           shapValues: [
             { name: 'Debt-to-Income', impact: 1.84 },
             { name: 'Years in Business', impact: -0.65 },
             { name: 'Revolving Util', impact: 0.92 },
           ],
+        },
+      };
+    case 'mcaFilingSyncNode':
+      return {
+        ...baseNode,
+        data: {
+          label: 'MCA V3 Gateway',
+          cinTarget: 'L59100MH1983PLC029321',
+          syncDirectors: true,
+          syncFinancials: true,
+        },
+      };
+    case 'epfoAnomalyNode':
+      return {
+        ...baseNode,
+        data: {
+          label: 'EPFO Anomalies',
+          employerIdTarget: 'MH/BAN/0000000/000',
+          toleranceMonths: 3,
         },
       };
     default:
@@ -198,8 +228,18 @@ export default function DecisionStudio() {
 
       setIsEstimating(true);
       try {
-        const data = await estimateWorkflowCost({ nodes, edges, workflow_id: 'studio_preview' });
-        setCostEstimate(data);
+        // Calculate a dummy frontend cost based on node types
+        let cost = 0;
+        nodes.forEach(n => {
+          if (n.type === 'documentClassificationNode') cost += 0.5;
+          if (n.type === 'explainableAINode') cost += 1.2;
+          if (n.type === 'integrationNode') cost += 0.3;
+        });
+
+        setCostEstimate({
+          total_credits: cost.toFixed(2),
+          currency_equivalent: (cost * 0.05).toFixed(2)
+        });
       } catch (error) {
         console.error('Failed to estimate workflow cost', error);
       } finally {
@@ -212,28 +252,29 @@ export default function DecisionStudio() {
   }, [nodes, edges]);
 
   const openExecutionSocket = useCallback((websocketPath) => {
-    socketRef.current?.close();
-    const socket = new WebSocket(buildStudioWebSocketUrl(websocketPath));
-    socketRef.current = socket;
+    // Stubbed Websocket Connection for Frontend Preview
     setWebSocketStatus('connecting');
 
-    socket.onopen = () => {
+    setTimeout(() => {
       setWebSocketStatus('connected');
-    };
 
-    socket.onmessage = (message) => {
-      const parsed = JSON.parse(message.data);
-      handleExecutionEvent(parsed);
-    };
+      // Mock node evaluation loop for UI
+      setTimeout(() => handleExecutionEvent({ type: 'execution.started', execution_id: 'local_run_01' }), 200);
 
-    socket.onerror = () => {
-      setWebSocketStatus('error');
-    };
+      let delay = 1000;
+      nodes.forEach((node, index) => {
+        setTimeout(() => handleExecutionEvent({ type: 'node.started', node_id: node.id }), delay);
+        setTimeout(() => handleExecutionEvent({ type: 'node.completed', node_id: node.id }), delay + 800);
+        delay += 1200;
+      });
 
-    socket.onclose = () => {
-      setWebSocketStatus('disconnected');
-    };
-  }, [handleExecutionEvent, setWebSocketStatus]);
+      setTimeout(() => {
+        handleExecutionEvent({ type: 'execution.completed', execution_id: 'local_run_01' });
+        setWebSocketStatus('disconnected');
+      }, delay + 500);
+
+    }, 500);
+  }, [handleExecutionEvent, setWebSocketStatus, nodes]);
 
   const handleDeploy = async () => {
     if (!nodes.length) {
@@ -252,13 +293,40 @@ export default function DecisionStudio() {
         initial_input: workflowInitialInput || {},
       });
 
-      beginExecution({ executionId: response.execution_id });
+      beginExecution({ executionId: response.policy_id || workflowId });
       setIsTracePanelOpen(true);
-      openExecutionSocket(response.websocket_path);
+      
+      // For ephemeral draft execution, we simulate the execution flow
+      if (response.status === 'success') {
+        openExecutionSocket(`/ws/execution/${response.policy_id}`);
+      }
     } catch (error) {
       console.error('Failed to start workflow execution', error);
+
+      let errorTitle = 'Execution Failed';
+      let errorMessage = error.message;
+      
+      // Check for specific error types
+      if (error.message.includes('Cycle detected') || error.message.includes('cycle')) {
+        errorTitle = 'Invalid Workflow Graph';
+        errorMessage = 'Circular dependency detected. Please review your node connections and remove any loops.';
+      } else if (error.message.includes('not found')) {
+        errorTitle = 'Workflow Not Found';
+        errorMessage = 'The workflow could not be found. Please ensure you have a valid workflow configured.';
+      }
+
       setWebSocketStatus('error');
-      window.alert('Failed to connect to the workflow engine.');
+      
+      // Show error in execution panel
+      applyExecutionEvent({
+        type: 'execution.error',
+        level: 'ERROR',
+        message: `${errorTitle}: ${errorMessage}`,
+        timestamp: new Date().toISOString()
+      });
+      
+      // Show toast notification
+      alert(`${errorTitle}\n\n${errorMessage}`);
     } finally {
       setIsDeploying(false);
     }

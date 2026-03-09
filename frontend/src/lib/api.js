@@ -26,8 +26,35 @@ export const estimateWorkflowCost = async (payload) => {
 };
 
 export const startWorkflowExecution = async (payload) => {
-  const response = await api.post('/studio/executions', payload);
-  return response.data;
+  // Ephemeral Draft Execution - sends raw DAG directly without MongoDB lookup
+  try {
+    const executeResponse = await api.post(`/v1/engine/execute/execute-draft`, {
+      trigger_payload: {
+        applicant_name: payload.initial_input?.applicant_name || "Acme Corp",
+        pan_number: payload.initial_input?.pan_number || "ABCDE1234F",
+        loan_amount: payload.initial_input?.loan_amount || payload.initial_input?.requested_amount || 50000,
+        pdf_urls: payload.initial_input?.pdf_urls || ["mock_url"]
+      },
+      nodes: payload.nodes,
+      edges: payload.edges
+    });
+
+    return executeResponse.data;
+  } catch (error) {
+    // Extract meaningful error message for the frontend
+    const errorDetail = error.response?.data?.detail;
+    
+    if (error.response?.status === 400) {
+      // Handle DAG cycle detection
+      const cycleError = errorDetail?.error || "Invalid Workflow";
+      const cycleNodes = errorDetail?.cycle_nodes || [];
+      const userMessage = errorDetail?.message || "Cycle detected in workflow nodes";
+      
+      throw new Error(`${cycleError}: ${userMessage}`);
+    }
+    
+    throw new Error(errorDetail?.message || errorDetail?.error || error.message || "Failed to execute workflow");
+  }
 };
 
 export const uploadDocument = async (file, docType, analysisId = null) => {

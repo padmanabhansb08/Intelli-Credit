@@ -15,65 +15,65 @@ export default function ScenarioSimulator({ baseStressResult, currentDscr, pdSco
             <div className="space-y-4">
                 <div>
                     <div className="flex justify-between text-sm mb-2">
-                        <span className="text-slate-400">Revenue Shock (%)</span>
-                        <span className="text-white font-mono">-{revenueShock}%</span>
+                        <span className="text-muted-foreground font-semibold">Revenue Shock (%)</span>
+                        <span className="text-foreground font-mono font-bold">-{revenueShock}%</span>
                     </div>
                     <input
                         type="range" min="0" max="50" step="5"
                         value={revenueShock} onChange={(e) => setRevenueShock(Number(e.target.value))}
-                        className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                        className="w-full h-2 bg-secondary rounded-lg appearance-none cursor-pointer accent-primary"
                     />
                 </div>
 
                 <div>
                     <div className="flex justify-between text-sm mb-2">
-                        <span className="text-slate-400">Interest Rate Shock (bps)</span>
-                        <span className="text-white font-mono">+{rateShock * 100} bps</span>
+                        <span className="text-muted-foreground font-semibold">Interest Rate Shock (bps)</span>
+                        <span className="text-foreground font-mono font-bold">+{rateShock * 100} bps</span>
                     </div>
                     <input
                         type="range" min="0" max="5" step="0.5"
                         value={rateShock} onChange={(e) => setRateShock(Number(e.target.value))}
-                        className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-amber-500"
+                        className="w-full h-2 bg-secondary rounded-lg appearance-none cursor-pointer accent-warning"
                     />
                 </div>
             </div>
 
             <div className="grid grid-cols-2 gap-4 mt-6">
-                <div className="bg-[#0f172a] rounded-lg p-4 border border-slate-800">
-                    <p className="text-xs text-slate-500 mb-1">Stressed DSCR</p>
+                <div className="bg-background rounded-lg p-4 border border-border shadow-inner">
+                    <p className="text-xs text-muted-foreground mb-1 font-semibold uppercase tracking-wider">Stressed DSCR</p>
                     <div className="flex items-end gap-2">
-                        <span className={`text-2xl font-bold ${simulatedDscr < 1.0 ? 'text-red-400' : 'text-white'}`}>
+                        <span className={`text-2xl font-black tracking-tight ${simulatedDscr < 1.0 ? 'text-destructive' : 'text-foreground'}`}>
                             {simulatedDscr.toFixed(2)}x
                         </span>
-                        <span className="text-xs text-slate-500 mb-1">
+                        <span className="text-xs text-muted-foreground font-medium mb-1">
                             (from {currentDscr.toFixed(2)}x)
                         </span>
                     </div>
                 </div>
 
-                <div className="bg-[#0f172a] rounded-lg p-4 border border-slate-800">
-                    <p className="text-xs text-slate-500 mb-1">Stressed PD</p>
+                <div className="bg-background rounded-lg p-4 border border-border shadow-inner">
+                    <p className="text-xs text-muted-foreground mb-1 font-semibold uppercase tracking-wider">Stressed PD</p>
                     <div className="flex items-end gap-2">
-                        <span className={`text-2xl font-bold ${simulatedPd > 0.5 ? 'text-red-400' : 'text-white'}`}>
+                        <span className={`text-2xl font-black tracking-tight ${simulatedPd > 0.5 ? 'text-destructive' : 'text-foreground'}`}>
                             {(simulatedPd * 100).toFixed(1)}%
                         </span>
-                        <span className="text-xs text-slate-500 mb-1">
+                        <span className="text-xs text-muted-foreground font-medium mb-1">
                             (from {(pdScore * 100).toFixed(1)}%)
                         </span>
                     </div>
                 </div>
             </div>
 
-            <div className={`p-4 rounded-lg flex items-center justify-between border ${isSurviving ? 'bg-emerald-500/10 border-emerald-500/20' : 'bg-red-500/10 border-red-500/20'}`}>
+            <div className={`p-4 rounded-lg flex items-center justify-between border ${isSurviving ? 'bg-success/10 border-success/20' : 'bg-destructive/10 border-destructive/20'}`}>
                 <div className="flex items-center gap-3">
-                    <Activity className={`w-5 h-5 ${isSurviving ? 'text-emerald-400' : 'text-red-400'}`} />
-                    <span className={`font-semibold ${isSurviving ? 'text-emerald-400' : 'text-red-400'}`}>
+                    <Activity className={`w-5 h-5 ${isSurviving ? 'text-success' : 'text-destructive'}`} />
+                    <span className={`font-semibold ${isSurviving ? 'text-success' : 'text-destructive'}`}>
                         {isSurviving ? 'Passes Stress Test' : 'Fails Stress Constraints'}
                     </span>
                 </div>
                 <button
                     onClick={() => { setRevenueShock(0); setRateShock(0) }}
-                    className="text-slate-400 hover:text-white p-1"
+                    className="text-muted-foreground hover:text-foreground p-1 transition-colors"
                     title="Reset"
                 >
                     <RefreshCw className="w-4 h-4" />
