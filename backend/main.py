@@ -1,8 +1,10 @@
-﻿from fastapi import FastAPI
+from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from routers import analyze, cam, studio, applications, research, engine, execution
 import os
 import uvicorn
+
+from security.auth import verify_firebase_token
 
 try:
     from database import init_db
@@ -43,6 +45,12 @@ async def startup_event():
 @app.get("/health")
 async def health_check():
     return {"status": "healthy", "service": "Credit Engine API"}
+
+
+@app.get("/api/secure-data", dependencies=[Depends(verify_firebase_token)])
+async def secure_endpoint():
+    """Example of a route protected by Firebase Authentication."""
+    return {"message": "You are securely authenticated via Firebase!"}
 
 
 if __name__ == "__main__":
