@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import DateTime, Float, ForeignKey, Integer, LargeBinary, String, Text
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, LargeBinary, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.types import JSON
 
@@ -228,6 +228,10 @@ class CreditApplication(Base):
     decision: Mapped[str | None] = mapped_column(String(64), nullable=True)
     grade: Mapped[str | None] = mapped_column(String(16), nullable=True)
     composite_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    dscr_ratio: Mapped[float | None] = mapped_column(Float, nullable=True)
+    leverage_ratio: Mapped[float | None] = mapped_column(Float, nullable=True)
+    gstr_mismatch_flag: Mapped[bool | None] = mapped_column(Boolean, nullable=True, default=False)
+    nclt_flag: Mapped[bool | None] = mapped_column(Boolean, nullable=True, default=False)
     pd_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, onupdate=utc_now)

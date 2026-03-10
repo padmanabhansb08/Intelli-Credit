@@ -30,15 +30,36 @@ export default function CAMTerminalView() {
     const [isLoadingJSON, setIsLoadingJSON] = useState(true);
     const [fetchError, setFetchError] = useState(null);
     const [isGenerating, setIsGenerating] = useState(false);
+    const [pdfUrl, setPdfUrl] = useState(null);
+    const [pdfError, setPdfError] = useState(false);
 
     useEffect(() => {
         if (user) {
             user.getIdToken().then(token => {
                 setAuthToken(token);
                 fetchAnalysisData(token);
+                fetchPdfBlob(token);
             });
         }
     }, [id, user]);
+
+    const fetchPdfBlob = async (token) => {
+        try {
+            const response = await fetch(`${NEXT_PUBLIC_API_URL}/cam/download/${id}`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+            if (!response.ok) throw new Error("Failed to fetch PDF");
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            setPdfUrl(url);
+        } catch (err) {
+            console.error(err);
+            setPdfError(true);
+        }
+    };
 
     const fetchAnalysisData = async (token) => {
         setIsLoadingJSON(true);
@@ -311,20 +332,29 @@ export default function CAMTerminalView() {
             RIGHT PANE: PDF VIEWER (40%)
             ========================================= */}
                 <div className="w-full lg:w-[40%] bg-slate-950 flex flex-col items-center justify-center relative shadow-[-10px_0_30px_rgba(0,0,0,0.5)] z-0">
-                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center opacity-50 pointer-events-none">
-                        <FileText className="w-12 h-12 text-slate-700 animate-pulse mb-4" />
-                        <p className="text-slate-500 font-mono text-sm tracking-widest">STREAMING PDF BLOB...</p>
-                    </div>
-                    <iframe
-                        src={`${NEXT_PUBLIC_API_URL}/cam/download/${id}#toolbar=1&navpanes=0&scrollbar=1`}
-                        title="CAM PDF Document"
-                        className="w-full h-full relative z-10 bg-transparent border-0"
-                        style={{ colorScheme: 'light' }}
-                        onLoad={(e) => {
-                            // Hide loading spinner behind iframe if possible, though native iframe obscures it automatically
-                            e.target.style.background = "white";
-                        }}
-                    />
+                    {!pdfUrl && !pdfError && (
+                        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center opacity-50 pointer-events-none z-20">
+                            <FileText className="w-12 h-12 text-slate-700 animate-pulse mb-4" />
+                            <p className="text-slate-500 font-mono text-sm tracking-widest">STREAMING PDF BLOB...</p>
+                        </div>
+                    )}
+                    {pdfError && (
+                        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center opacity-80 pointer-events-none z-20 text-rose-500">
+                            <AlertTriangle className="w-12 h-12 mb-4" />
+                            <p className="font-mono text-sm tracking-widest">FAILED TO LOAD PDF</p>
+                        </div>
+                    )}
+                    {pdfUrl && (
+                        <iframe
+                            src={`${pdfUrl}#toolbar=1&navpanes=0&scrollbar=1`}
+                            title="CAM PDF Document"
+                            className="w-full h-full relative z-10 bg-transparent border-0"
+                            style={{ colorScheme: 'light' }}
+                            onLoad={(e) => {
+                                e.target.style.background = "white";
+                            }}
+                        />
+                    )}
                 </div>
 
             </div>

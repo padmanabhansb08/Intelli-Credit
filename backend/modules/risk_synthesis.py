@@ -15,58 +15,72 @@ GRADE_MAP = [
 ]
 
 
-def compute_composite_risk(pd_score: float, features: Dict[str, Any],
-                            web_research: Dict[str, Any],
-                            stress_test: Dict[str, Any]) -> Dict[str, Any]:
+def compute_composite_risk(pd_score: float, features: Dict[str, Any], web_research: Dict[str, Any], stress_test: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Synthesize all risk signals into a composite risk score (0-100).
+    Synthesize risk into a deterministic "5 Cs of Credit" composite score (0-100).
     Lower score = better credit quality.
+    Weights: Capacity (25%), Capital (20%), Character (20%), Collateral (20%), Conditions (15%).
+    Applies hard penalties for severe OSINT/GST flags and generates a reasoning matrix.
     """
-
-    # 1. PD Component (weight: 30%)
-    pd_component = pd_score * 100
-
-    # 2. Financial Health Score (weight: 25%)
-    dscr = features.get("dscr", 1)
-    debt_equity = features.get("debt_equity_ratio", 1)
-    ebitda_margin = features.get("ebitda_margin", 0.15)
-    revenue_growth = features.get("revenue_growth", 0)
+    reasoning_matrix = []
+    
+    # 1. Capacity (25%) - Ability to repay (DSCR & Cash Flow)
+    dscr = features.get("dscr", 1.0)
     cash_flow_stability = features.get("cash_flow_stability", 0.7)
+    capacity_score = max(0, min(100, 100 - (dscr - 0.5) * 40)) * 0.5 + max(0, min(100, (1 - cash_flow_stability) * 100)) * 0.5
+    capacity_weight = 0.25
+    reasoning_matrix.append(f"Capacity [{capacity_weight*100}%]: Scored {capacity_score:.1f} based on DSCR ({dscr:.2f}) and CF stability.")
+
+    # 2. Capital (20%) - Skin in the game (Leverage & Net Worth)
+    debt_equity = features.get("debt_equity_ratio", 1.0)
+    capital_score = max(0, min(100, debt_equity * 25))
+    capital_weight = 0.20
+    
+    gstr_mismatch = features.get("gstr_mismatch_flag", False)
+    if gstr_mismatch:
+        capital_score = min(100, capital_score + 25)  # Penalty increases risk score
+        reasoning_matrix.append("Capital Penalty: Added 25 risk points due to detected GSTR-3B vs 2A tax variance > 5%.")
+    reasoning_matrix.append(f"Capital [{capital_weight*100}%]: Scored {capital_score:.1f} based on Leverage (D/E: {debt_equity:.2f}).")
+
+    # 3. Character (20%) - Willingness to repay (Bureau, OSINT, Management)
     bureau_score = features.get("bureau_score", 700)
+    base_character = max(0, min(100, (900 - bureau_score) / 6))
+    character_weight = 0.20
+    
+    nclt_flag = features.get("nclt_flag", False)
+    if nclt_flag:
+        base_character = 100  # Max risk
+        reasoning_matrix.append("Character Penalty: Applied MAXIMUM risk score (100) due to active NCLT/IBC insolvency proceedings detected.")
+    else:
+        reasoning_matrix.append(f"Character [{character_weight*100}%]: Scored {base_character:.1f} based on Bureau ({bureau_score}). No NCLT flags.")
+        
+    character_score = base_character
 
-    financial_health = (
-        max(0, min(100, 100 - (dscr - 0.5) * 30)) * 0.20 +
-        max(0, min(100, debt_equity * 15)) * 0.20 +
-        max(0, min(100, (0.3 - ebitda_margin) * 200)) * 0.15 +
-        max(0, min(100, (0.1 - revenue_growth) * 200)) * 0.15 +
-        max(0, min(100, (1 - cash_flow_stability) * 100)) * 0.15 +
-        max(0, min(100, (900 - bureau_score) / 6)) * 0.15
-    )
+    # 4. Collateral (20%) - Security
+    collateral_coverage = features.get("collateral_coverage", 1.0)
+    collateral_score = max(0, min(100, (2 - collateral_coverage) * 50))
+    collateral_weight = 0.20
+    reasoning_matrix.append(f"Collateral [{collateral_weight*100}%]: Scored {collateral_score:.1f} based on Coverage Ratio ({collateral_coverage:.2f}x).")
 
-    # 3. Web/External Risk Score (weight: 20%)
+    # 5. Conditions (15%) - Macro & Stress Test
     web_risk = web_research.get("web_risk_score", 40)
-
-    # 4. Collateral Coverage (weight: 10%)
-    collateral_coverage = features.get("collateral_coverage", 1)
-    collateral_risk = max(0, min(100, (2 - collateral_coverage) * 50))
-
-    # 5. Stress Test Impact (weight: 15%)
-    combined_stress = stress_test.get("combined_stress", {})
-    stress_dscr = combined_stress.get("dscr", 1)
-    survives = combined_stress.get("survives_stress", True)
-    stress_risk = max(0, min(100, (1.5 - stress_dscr) * 50))
-    if not survives:
-        stress_risk = min(100, stress_risk + 20)
+    survives_stress = stress_test.get("survives_stress", True)
+    conditions_score = web_risk * 0.6 + (0 if survives_stress else 40)
+    conditions_weight = 0.15
+    reasoning_matrix.append(f"Conditions [{conditions_weight*100}%]: Scored {conditions_score:.1f} based on Industry Macro and Stress Test Resilience.")
 
     # Weighted composite
     composite = (
-        pd_component * 0.30 +
-        financial_health * 0.25 +
-        web_risk * 0.20 +
-        collateral_risk * 0.10 +
-        stress_risk * 0.15
+        capacity_score * capacity_weight +
+        capital_score * capital_weight +
+        character_score * character_weight +
+        collateral_score * collateral_weight +
+        conditions_score * conditions_weight
     )
+    
+    # Add PD baseline impact implicitly (this replaces the old 30% PD weight to make it a pure 5C model)
     composite = round(max(0, min(100, composite)), 2)
+    reasoning_matrix.append(f"Final Composite Risk Score calculated at {composite}/100.")
 
     # Map to grade
     grade = "C"
@@ -84,20 +98,14 @@ def compute_composite_risk(pd_score: float, features: Dict[str, Any],
         "composite_score": composite,
         "grade": grade,
         "grade_label": grade_label,
+        "reasoning_matrix": reasoning_matrix,
         "components": {
-            "pd_component": {"score": round(pd_component, 2), "weight": 0.30, "weighted": round(pd_component * 0.30, 2)},
-            "financial_health": {"score": round(financial_health, 2), "weight": 0.25, "weighted": round(financial_health * 0.25, 2)},
-            "web_risk": {"score": round(web_risk, 2), "weight": 0.20, "weighted": round(web_risk * 0.20, 2)},
-            "collateral_risk": {"score": round(collateral_risk, 2), "weight": 0.10, "weighted": round(collateral_risk * 0.10, 2)},
-            "stress_risk": {"score": round(stress_risk, 2), "weight": 0.15, "weighted": round(stress_risk * 0.15, 2)},
-        },
-        "thresholds": {
-            "A": "0-20 (Excellent)",
-            "B": "20-35 (Good)",
-            "C": "35-55 (Moderate)",
-            "D": "55-75 (High Risk)",
-            "E": "75-100 (Very High Risk)",
-        },
+            "capacity": {"score": round(capacity_score, 2), "weight": capacity_weight},
+            "capital": {"score": round(capital_score, 2), "weight": capital_weight},
+            "character": {"score": round(character_score, 2), "weight": character_weight},
+            "collateral": {"score": round(collateral_score, 2), "weight": collateral_weight},
+            "conditions": {"score": round(conditions_score, 2), "weight": conditions_weight},
+        }
     }
 
 

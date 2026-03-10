@@ -13,6 +13,8 @@ import httpx
 import numpy as np
 import pandas as pd
 import pdfplumber
+import pytesseract
+from pdf2image import convert_from_bytes
 
 try:
     from databricks import sql
@@ -301,18 +303,65 @@ def _request_gemini_json(
         return {}
 
 
+def _normalize_indian_financials(text: str) -> str:
+    """Regex-based utility to convert Indian 'Cr' and 'Lakhs' into clean standard numbers."""
+    if not text:
+        return text
+    
+    def replace_cr(match):
+        try:
+            val = float(match.group(1).replace(",", ""))
+            return str(int(val * 10000000))
+        except ValueError:
+            return match.group(0)
+    
+    text = re.sub(r"([\d,]+(?:\.\d+)?)\s*(?:Cr|Crores?)", replace_cr, text, flags=re.IGNORECASE)
+    
+    def replace_lakh(match):
+        try:
+            val = float(match.group(1).replace(",", ""))
+            return str(int(val * 100000))
+        except ValueError:
+            return match.group(0)
+    
+    text = re.sub(r"([\d,]+(?:\.\d+)?)\s*(?:Lakhs?|Lacs?)", replace_lakh, text, flags=re.IGNORECASE)
+    return text
+
+
 def _extract_text_from_pdf(file_bytes: bytes) -> str:
     text_chunks: List[str] = []
+    total_chars = 0
+    num_pages = 0
+    
     with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
+        num_pages = len(pdf.pages)
         for page in pdf.pages:
             page_text = page.extract_text() or ""
-            if page_text:
-                text_chunks.append(page_text)
+            
+            # Preserve tabular markdown structure
             for table in page.extract_tables() or []:
-                rows = [" ".join(str(cell) for cell in row if cell is not None) for row in table if row]
+                rows = [" | ".join(str(cell) for cell in row if cell is not None) for row in table if row]
                 if rows:
-                    text_chunks.append("\n".join(rows))
-    return "\n".join(text_chunks)
+                    page_text += "\n" + "\n".join(rows)
+                    
+            if page_text.strip():
+                text_chunks.append(page_text)
+                total_chars += len(page_text)
+
+    # Fallback trigger: If character count extracted per page is abnormally low (indicating scanned image)
+    if num_pages > 0 and (total_chars / num_pages) < 100:
+        print("Scanned document detected (low char count). Engaging hybrid Tesseract OCR fallback...")
+        text_chunks = []
+        try:
+            images = convert_from_bytes(file_bytes)
+            for img in images:
+                ocr_text = pytesseract.image_to_string(img)
+                text_chunks.append(ocr_text)
+        except Exception as e:
+            print(f"OCR failed: {e}")
+
+    extracted_text = "\n".join(text_chunks)
+    return _normalize_indian_financials(extracted_text)
 
 
 def _detect_document_type(text: str) -> str:

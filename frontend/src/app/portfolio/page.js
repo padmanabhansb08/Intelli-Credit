@@ -14,7 +14,8 @@ import {
     AlertTriangle,
     Download,
     Cpu,
-    Filter
+    Filter,
+    Plus
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
