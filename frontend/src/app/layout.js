@@ -7,9 +7,11 @@ import { Plus } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import { useTabSync } from "@/hooks/useTabSync";
 import { AuthProvider } from "@/context/AuthContext";
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import "./globals.css";
 
 const inter = Inter({ subsets: ["latin"] });
+const queryClient = new QueryClient();
 
 export default function RootLayout({ children }) {
   const pathname = usePathname();
@@ -34,14 +36,15 @@ export default function RootLayout({ children }) {
         </div>
 
         <div className="relative z-10 flex flex-col min-h-screen">
-          <AuthProvider>
-            <Navbar />
+          <QueryClientProvider client={queryClient}>
+            <AuthProvider>
+              <Navbar />
 
-
-            <main className="flex-1 container mx-auto px-4 sm:px-6 py-8">
-              {children}
-            </main>
-          </AuthProvider>
+              <main className="flex-1 container mx-auto px-4 sm:px-6 py-8">
+                {children}
+              </main>
+            </AuthProvider>
+          </QueryClientProvider>
         </div>
       </body>
     </html>

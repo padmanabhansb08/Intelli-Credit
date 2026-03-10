@@ -1,6 +1,6 @@
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from routers import analyze, cam, studio, applications, research, engine, execution
+from routers import analyze, cam, studio, applications, research, engine, execution, portfolio
 import os
 import uvicorn
 
@@ -29,6 +29,7 @@ app.include_router(analyze.router, prefix="/api", tags=["Analysis"])
 app.include_router(cam.router, prefix="/api/cam", tags=["CAM Generation"])
 app.include_router(applications.router, prefix="/api", tags=["Applications"])  # new
 app.include_router(research.router, prefix="/api", tags=["Research"])  # new
+app.include_router(portfolio.router, prefix="/api", tags=["Portfolio"])  # new
 app.include_router(engine.router, prefix="/api/v1/engine", tags=["Engine Deployment"])
 app.include_router(execution.router, prefix="/api/v1/engine/execute", tags=["Engine Execution"])
 

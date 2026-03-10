@@ -43,16 +43,16 @@ export const startWorkflowExecution = async (payload) => {
   } catch (error) {
     // Extract meaningful error message for the frontend
     const errorDetail = error.response?.data?.detail;
-    
+
     if (error.response?.status === 400) {
       // Handle DAG cycle detection
       const cycleError = errorDetail?.error || "Invalid Workflow";
       const cycleNodes = errorDetail?.cycle_nodes || [];
       const userMessage = errorDetail?.message || "Cycle detected in workflow nodes";
-      
+
       throw new Error(`${cycleError}: ${userMessage}`);
     }
-    
+
     throw new Error(errorDetail?.message || errorDetail?.error || error.message || "Failed to execute workflow");
   }
 };
@@ -142,6 +142,20 @@ export const downloadCamPdf = async (analysisId) => {
   anchor.remove();
   window.URL.revokeObjectURL(url);
   return filename;
+};
+
+export const searchPortfolio = async (queryParams) => {
+  const { q, status, industry, min_score, limit } = queryParams;
+  const params = new URLSearchParams();
+
+  if (q) params.append('q', q);
+  if (status) params.append('status', status);
+  if (industry) params.append('industry', industry);
+  if (min_score !== undefined && min_score !== null) params.append('min_score', min_score);
+  if (limit) params.append('limit', limit);
+
+  const response = await api.get(`/portfolio/search?${params.toString()}`);
+  return response.data;
 };
 
 const parseFilename = (contentDisposition) => {

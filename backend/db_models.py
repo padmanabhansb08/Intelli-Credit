@@ -255,3 +255,43 @@ class ImmutableAuditLog(Base):
     deterministic_outcome_json: Mapped[dict[str, Any]] = mapped_column(JSON)
 
     application: Mapped["CreditApplication"] = relationship("CreditApplication", back_populates="audit_log")
+
+
+class CreditRecord(Base):
+    __tablename__ = "credit_records"
+
+    id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    application_id: Mapped[str] = mapped_column(String(128), ForeignKey("credit_applications.id", ondelete="CASCADE"), index=True)
+    company_name: Mapped[str] = mapped_column(String(255), index=True)
+    industry: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    
+    # 5 Cs Summaries and Scores
+    character_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    capacity_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    capital_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    collateral_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    conditions_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    
+    character_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    capacity_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    capital_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    collateral_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    conditions_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Financial Metrics
+    revenue: Mapped[float | None] = mapped_column(Float, nullable=True)
+    ebitda: Mapped[float | None] = mapped_column(Float, nullable=True)
+    debt_service_coverage_ratio: Mapped[float | None] = mapped_column(Float, nullable=True)
+    
+    # Outputs
+    composite_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    status: Mapped[str] = mapped_column(String(64), default="COMPLETED")
+    
+    # Textual details for vector matching
+    full_text_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, onupdate=utc_now)
+
+    application: Mapped["CreditApplication"] = relationship("CreditApplication", backref="credit_record")
+
