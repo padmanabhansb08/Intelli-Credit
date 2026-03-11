@@ -1,4 +1,4 @@
-﻿from datetime import datetime
+from datetime import datetime
 import json
 import logging
 import uuid
@@ -275,10 +275,10 @@ async def run_full_analysis(
         company_name=req.customer.name,
         company_id=req.customer.id,
         gstin=f"27{req.customer.id}1Z5"[:15],  # Fake GSTIN based on ID for demo
-        cin=f"U74999MH2023PTC{req.customer.id}"[:21], # Fake CIN based on ID
-        pan=f"ABCDE{req.customer.id}F"[:10]    # Fake PAN based on ID
+        cin=f"U74999MH2023PTC{req.customer.id}"[:21],  # Fake CIN based on ID
+        pan=f"ABCDE{req.customer.id}F"[:10]  # Fake PAN based on ID
     )
-    
+
     # Merge the rigorous unified BorrowerFact into the feature set for the decision engine
     features.update(ext_data)
 
@@ -299,7 +299,6 @@ async def run_full_analysis(
             features["bureau_score"] = int(900 - (cmr - 1) * (600 / 9))
         else:
             features["bureau_score"] = cmr
-
 
     web_research_data = await simulate_web_research(
         company_name=req.customer.name,

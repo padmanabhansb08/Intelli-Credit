@@ -13,7 +13,7 @@ def get_session(tenant_id, analysis_id):
     return ANALYSIS_DB.get(tenant_id, {}).get(analysis_id)
 
 
-def build_cam_response(analysis_id: str, tenant: dict) -> Response:
+async def build_cam_response(analysis_id: str, tenant: dict) -> Response:
     from modules.feature_store import load_full_analysis
     
     stored = load_full_analysis(analysis_id)
@@ -24,7 +24,7 @@ def build_cam_response(analysis_id: str, tenant: dict) -> Response:
         if not session or "full_result" not in session:
             raise HTTPException(status_code=404, detail="Analysis not found. Please run a new analysis.")
         full_result = session["full_result"]
-    cam_sections = generate_cam_content(full_result)
+    cam_sections = await generate_cam_content(full_result)
     pdf_bytes = build_cam_pdf(cam_sections, full_result)
     company_name = full_result.get("company_name", "Borrower").replace(" ", "_")
     filename = f"CAM_{company_name}.pdf"
@@ -41,10 +41,10 @@ def build_cam_response(analysis_id: str, tenant: dict) -> Response:
 @router.post("/generate/{analysis_id}")
 async def generate_cam_pdf(analysis_id: str, tenant: dict = Depends(get_tenant)):
     """Generate a CAM PDF and return it as a downloadable blob response."""
-    return build_cam_response(analysis_id, tenant)
+    return await build_cam_response(analysis_id, tenant)
 
 
 @router.get("/download/{analysis_id}")
 async def download_cam_pdf(analysis_id: str, tenant: dict = Depends(get_tenant)):
     """Backward-compatible download alias for the generated CAM PDF."""
-    return build_cam_response(analysis_id, tenant)
+    return await build_cam_response(analysis_id, tenant)

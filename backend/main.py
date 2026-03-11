@@ -1,6 +1,8 @@
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from routers import analyze, cam, studio, applications, research, engine, execution, portfolio
+from routers import policies as policies_router, decisions as decisions_router
+from routers import approvals as approvals_router
 import os
 import uvicorn
 
@@ -25,6 +27,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Idempotency middleware — caches POST responses by Idempotency-Key header
+try:
+    from middleware.idempotency import IdempotencyMiddleware
+    app.add_middleware(IdempotencyMiddleware)
+except ImportError:
+    pass  # graceful fallback if cachetools not installed
+
 app.include_router(analyze.router, prefix="/api", tags=["Analysis"])
 app.include_router(cam.router, prefix="/api/cam", tags=["CAM Generation"])
 app.include_router(applications.router, prefix="/api", tags=["Applications"])  # new
@@ -32,6 +41,11 @@ app.include_router(research.router, prefix="/api", tags=["Research"])  # new
 app.include_router(portfolio.router, prefix="/api", tags=["Portfolio"])  # new
 app.include_router(engine.router, prefix="/api/v1/engine", tags=["Engine Deployment"])
 app.include_router(execution.router, prefix="/api/v1/engine/execute", tags=["Engine Execution"])
+
+# v2 Policy Engine & Decision Routers (async PostgreSQL)
+app.include_router(policies_router.router, prefix="/api/v2", tags=["Policy Engine"])
+app.include_router(decisions_router.router, prefix="/api/v2", tags=["Decision Engine"])
+app.include_router(approvals_router.router, prefix="/api/v2", tags=["Maker-Checker Approvals"])
 
 
 @app.on_event("startup")

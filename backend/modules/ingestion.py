@@ -259,15 +259,16 @@ def _request_gemini_json(
     parts: List[Dict[str, Any]] = [{"text": prompt}]
     if text_context:
         parts.append({"text": text_context[:12000]})
-    if file_bytes:
-        parts.append(
-            {
-                "inline_data": {
-                    "mime_type": "application/pdf",
-                    "data": base64.b64encode(file_bytes).decode("utf-8"),
-                }
-            }
-        )
+    # Skip PDF vision - use text-only extraction for reliability
+    # if file_bytes:
+    #     parts.append(
+    #         {
+    #             "inline_data": {
+    #                 "mime_type": "application/pdf",
+    #                 "data": base64.b64encode(file_bytes).decode("utf-8"),
+    #             }
+    #         }
+    #     )
 
     payload = {
         "contents": [{"parts": parts}],
@@ -275,26 +276,42 @@ def _request_gemini_json(
     }
     try:
         response = httpx.post(_gemini_endpoint(), json=payload, timeout=GEMINI_TIMEOUT_SEC)
-        response.raise_for_status()
-        body = response.json()
         
-        # Check for error in response
+        # Check for error in response body before raise_for_status
+        try:
+            body = response.json()
+        except Exception:
+            body = {}
+        
+        # Check for error in response body or HTTP error
+        error_msg = ""
         if "error" in body:
             error_msg = body.get("error", {}).get("message", "")
-            if "does not support image" in error_msg or "image" in error_msg.lower():
-                print(f"Gemini vision not supported, falling back to text-only: {error_msg}")
-                # Retry with text-only (no file_bytes)
-                if file_bytes:
-                    parts_text_only = [{"text": prompt}]
-                    if text_context:
-                        parts_text_only.append({"text": text_context[:12000]})
-                    payload_text_only = {
-                        "contents": [{"parts": parts_text_only}],
-                        "generationConfig": {"temperature": 0.1, "responseMimeType": "application/json"},
-                    }
-                    response = httpx.post(_gemini_endpoint(), json=payload_text_only, timeout=GEMINI_TIMEOUT_SEC)
-                    response.raise_for_status()
-                    body = response.json()
+        elif response.status_code >= 400:
+            # Try to get error from response body, fallback to status text
+            error_msg = error_msg or f"HTTP {response.status_code}: {response.text[:200]}"
+        
+        # Check if it's an image support error
+        if "does not support image" in error_msg.lower() or "does not support" in error_msg.lower() or "cannot read" in error_msg.lower() or "image" in error_msg.lower():
+            print(f"Gemini vision not supported, falling back to text-only: {error_msg}")
+            # Retry with text-only (no file_bytes)
+            if file_bytes:
+                parts_text_only = [{"text": prompt}]
+                if text_context:
+                    parts_text_only.append({"text": text_context[:12000]})
+                payload_text_only = {
+                    "contents": [{"parts": parts_text_only}],
+                    "generationConfig": {"temperature": 0.1, "responseMimeType": "application/json"},
+                }
+                response = httpx.post(_gemini_endpoint(), json=payload_text_only, timeout=GEMINI_TIMEOUT_SEC)
+                response.raise_for_status()
+                body = response.json()
+        elif response.status_code >= 400:
+            # Re-raise other errors
+            raise Exception(f"Gemini API error: {error_msg}")
+        
+        if not body:
+            response.raise_for_status()
         
         text_parts = body.get("candidates", [{}])[0].get("content", {}).get("parts", [])
         combined = "\n".join(part.get("text", "") for part in text_parts)

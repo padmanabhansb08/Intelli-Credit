@@ -1,4 +1,4 @@
-﻿"""
+"""
 Web-Scale Secondary Research
 Provides async functions for e-Courts, MCA, news sentiment, and qualitative
 insight scoring.  Uses Gemini LLM for intelligent web research when dedicated
@@ -132,11 +132,13 @@ async def _score_texts_finbert(texts: List[str]) -> Tuple[List[float], str]:
     if not texts:
         return [], "no_input"
 
-    # --- Attempt 1: local transformers pipeline ---
-    pipeline = _get_finbert_pipeline()
-    if pipeline is not None:
+    # --- Attempt 1: local transformers pipeline (run in thread pool to avoid blocking event loop) ---
+    nlp_pipeline = await asyncio.to_thread(_get_finbert_pipeline)
+    if nlp_pipeline is not None:
         try:
-            predictions = pipeline(texts[:8], truncation=True)
+            def _run_inference():
+                return nlp_pipeline(texts[:8], truncation=True)
+            predictions = await asyncio.to_thread(_run_inference)
             scores = [
                 _label_to_score(p.get("label"), p.get("score", 0.0))
                 for p in predictions
