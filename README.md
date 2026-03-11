@@ -2,67 +2,66 @@
 
 > An autonomous AI Credit Officer designed to simulate how Tier-1 bank credit committees operate.
 
-Intelli-Credit ingests structured and unstructured borrower financial data, conducts autonomous web-scale due diligence, computes an explainable composite risk score using Machine Learning ensembles, simulates stress tests, evaluating RAROC capital impact, and automatically generates a structured, downloadable Credit Appraisal Memo (CAM) in PDF format.
+Intelli-Credit is an end-to-end B2B credit decisioning platform. It ingests structured and unstructured borrower financial data, conducts autonomous web-scale due diligence, computes an explainable composite risk score using Machine Learning ensembles, simulates stress tests evaluating RAROC capital impact, and automatically generates a structured, downloadable Credit Appraisal Memo (CAM) in PDF format.
 
-## 🔥 Key Hackathon Differentiators
+## 🔥 Key Differentiators
 
-1.  **"AI Credit Officer" Persona**: The system is not just an ML pipeline; it acts as an autonomous underwriter with a unified dashboard.
-2.  **Web-Scale Web Research Simulation**: Includes NLP sentiment analysis, ESG scores, and litigation checks.
-3.  **Capital Impact (RAROC) Simulation**: Elevates from basic scoring to bank portfolio management by assessing Risk-Weighted Assets (RWA) and capital requirements.
-4.  **SHAP-Based Explainability**: Avoids "black box" models. The top 5 contributing risk drivers are extracted for every decision.
-5.  **Responsible AI Metrics**: Includes automated fairness evaluation (Disparate Impact Ratio) across demographics built directly into the model training pipeline.
+1.  **"AI Credit Officer" Persona & LLM Integration**: The system isn't just a traditional ML pipeline. It uses **Google Gemini** to extract unstructured data, read financial PDFs, and automatically author conversational narrative summaries for risk and compliance.
+2.  **Web-Scale Research Simulation**: Includes NLP sentiment analysis (using FinBERT), regulatory filings intelligence, and ESG scores.
+3.  **Modular Decision Studio**: A dynamic workflow engine that allows credit risk managers to visually construct underwriting logic, configure dynamic scoring rules, and trigger external webhooks interactively.
+4.  **Capital Impact (RAROC) Simulation**: Elevates from basic scoring to bank portfolio management by assessing Risk-Weighted Assets (RWA) and tier capital requirements.
+5.  **SHAP-Based Explainability**: Avoids "black box" models. The top contributing risk drivers are extracted for every decision.
 
 ## 🏗 System Architecture
 
-The project consists of a Python FastAPI backend acting as the Machine Learning and Agent orchestration layer, paired with a modern React/Next.js frontend.
+The project consists of a Python FastAPI backend acting as the Machine Learning, LLM, and pipeline orchestration layer, paired with a modern Next.js frontend featuring real-time state synchronization, drag-and-drop workflow canvases, and Firebase authentication.
 
-```mermaid
-graph TD;
-    A[Frontend Dashboard (Next.js)] <-->|REST API| B(FastAPI Backend);
-    B --> C(PDF/CSV Data Ingestion Engine);
-    B --> D{Feature Store};
-    B --> E((ML Inference Engine));
-    B --> F((Web-Scale Research Simulator));
-    B --> G[(Risk Synthesis & Capital Impact)];
-    E --> H[PD Model (Gradient Boosting)];
-    E --> I[Limit Model (GB Regression)];
-    E --> SHAP[SHAP TreeExplainer];
-    G --> J(Decision Logic Rules Engine);
-    J --> K[LLM-Style CAM Text Generator];
-    K --> L[ReportLab PDF Builder];
-    L --> A;
+### Core Modules
+*   **Ingestion Engine**: Parses financial PDFs, Bureau JSONs, and Bank Statement CSVs (using Gemini Vision & regex).
+*   **Dynamic Scorer & Rules Engine**: Evaluates nested risk rules built via the Decision Studio UI.
+*   **LLM Research Agent**: Leverages a LangChain-powered agent to perform RAG-based Vector Search and external intelligence aggregation. 
+*   **Risk Synthesis**: Combines ML Probability of Default (Gradient Boosting), qualitative LLM summaries, and macro-economic factors.
+
+## 🚀 Quick Start (Local Development)
+
+### 1. Backend Setup
+```bash
+cd backend
+python -m venv venv
+venv\Scripts\activate  # On Windows
+pip install -r requirements.txt
+```
+*Note: A `.env` file is required in the backend containing your `GEMINI_API_KEY`, `POSTGRES_USER`, and database strings for Alembic migrations.*
+
+Run the FastAPI server:
+```bash
+uvicorn main:app --reload --port 8000
 ```
 
-## 🚀 Quick Start (Docker)
+### 2. Frontend Setup
+```bash
+cd frontend
+npm install
+npm run dev
+```
+*Note: Ensure your `.env.local` contains valid Firebase configuration keys (`NEXT_PUBLIC_FIREBASE_API_KEY`, etc.) for user authentication to function.*
 
-Ensure you have Docker and Docker Compose installed.
+Access the platform at `http://localhost:3000`.
 
-1.  Clone this repository.
-2.  Run the application:
-    ```bash
-    docker-compose up --build
-    ```
-    *Note: During the first build, the backend Docker container will automatically generate a highly realistic synthetic dataset of 2,000 corporate borrowers, train the Scikit-Learn Gradient Boosting models, and generate the bias/fairness reports.*
+## 🧠 Using the Platform
 
-3.  Access the platform:
-    - **Frontend UI**: `http://localhost:3000`
-    - **Backend API Docs**: `http://localhost:8000/docs`
-
-## 🧠 Using the Demo
-
-1.  Open the Dashboard at `http://localhost:3000`.
-2.  **Upload a PDF**: You can upload any sample PDF. The system includes regex extraction and OCR fallback (simulated for immediate demo flow).
-3.  **Configure**: Enter a Company Name, select an Industry, and input the loan amount requested.
-4.  **Analyze**: Click "Run Autonomous Analysis". The UI will animate through the cognitive steps of the AI Credit Officer.
-5.  **Review the Output**:
+1.  **Authenticate**: Use the Firebase login page to sign in to the dashboard.
+2.  **Upload & Ingest**: Go to the New Proposal flow. Upload a financial PDF or Bureau data. The system uses Gemini Vision for intelligent OCR.
+3.  **Build Workflows**: Use the **Decision Studio** to visually drag and drop Risk Policies and Decision Nodes.
+4.  **Review the Output**:
     - Observe the final decision (APPROVE / CONDITIONAL / REJECT).
-    - Review the Stress Test simulator.
+    - Review the Stress Test simulator and SHAP charts.
     - Check the Governance Audit Trail.
-    - **Click "Download CAM PDF"** to get the final, 8-section professionally formatted Credit Appraisal Memo.
+    - Click **"Generate CAM"** to receive the final professionally formatted Credit Appraisal Memo PDF.
 
 ## 🛠 Tech Stack
 
-- **Machine Learning**: Scikit-Learn (GradientBoostingClassifier, GradientBoostingRegressor), SHAP, Numpy, Pandas
-- **Backend API**: Python 3.11, FastAPI, Uvicorn, ReportLab (PDF generation), pdfplumber
-- **Frontend App**: Next.js 15 (App Router), React 18, TailwindCSS 4, Recharts, Lucide-React
-- **Infra**: Docker, Docker Compose
+- **Machine Learning & AI**: Scikit-Learn (Gradient Boosting), SHAP, HuggingFace (`ProsusAI/finbert`), Google Gemini API, LangChain, FAISS (Vector DB)
+- **Backend API**: Python 3.11, FastAPI, Uvicorn, PostgreSQL (with asyncpg & Alembic), ReportLab
+- **Frontend App**: Next.js (App Router), React 18, TailwindCSS, Recharts, React Flow (Nodes), Zustand (State Management), Firebase Auth
+- **Infra**: Context-driven REST APIs, Webhooks, Docker (Optional)
