@@ -12,8 +12,9 @@ except ImportError:
     faiss = None
     TfidfVectorizer = None
 
-from sqlalchemy.orm import Session
-from db_models import CreditRecord
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
+from async_models import CreditRecord
 
 
 class HybridSearchEngine:
@@ -49,13 +50,13 @@ class HybridSearchEngine:
         self.initialized = True
         self.is_ready = False
 
-    async def synchronize_index(self, db: Session):
+    async def synchronize_index(self, db: AsyncSession):
         """Builds both FAISS and TF-IDF indices from the database."""
         if not SentenceTransformer or not faiss or not TfidfVectorizer:
             print("Warning: Search dependencies missing. Engine won't initialize.")
             return
 
-        records = db.query(CreditRecord).all()
+        records = (await db.execute(select(CreditRecord))).scalars().all()
         if not records:
             self.is_ready = True
             return

@@ -1,7 +1,8 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends, Query, HTTPException
-from sqlalchemy.orm import Session
-from database import get_db
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
+from async_database import get_async_db
 from services.search_engine import search_engine_instance
 from pydantic import BaseModel
 
@@ -24,12 +25,9 @@ async def initialize_search_engine():
     # Note: In a real clustered production environment, you'd trigger this
     # via a dedicated worker or message queue to avoid slowing down API startup.
     # For local/demo, we initialize here.
-    db_gen = get_db()
-    db = next(db_gen)
-    try:
+    from async_database import async_session_maker
+    async with async_session_maker() as db:
         await search_engine_instance.synchronize_index(db)
-    finally:
-        db.close()
 
 @router.get("/portfolio/search", response_model=List[SearchResult])
 async def search_portfolio(

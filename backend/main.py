@@ -7,21 +7,17 @@ import os
 import uvicorn
 
 from security.auth import verify_firebase_token
-
-try:
-    from database import init_db
-except ImportError:
-    init_db = None
+from core.config import settings
 
 app = FastAPI(
-    title="AI Credit Decisioning Engine API",
+    title=settings.PROJECT_NAME,
     description="Backend API for automated credit analysis and workflow execution.",
-    version="2.0.0"
+    version=settings.VERSION
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:5173", "http://127.0.0.1:3000", "http://127.0.0.1:5173"],
+    allow_origins=settings.ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -48,13 +44,16 @@ app.include_router(decisions_router.router, prefix="/api/v2", tags=["Decision En
 app.include_router(approvals_router.router, prefix="/api/v2", tags=["Maker-Checker Approvals"])
 
 
+from async_database import async_engine
+from async_models import AsyncBase
+
 @app.on_event("startup")
 async def startup_event():
     base_dir = os.path.dirname(os.path.abspath(__file__))
     for d in ["data/raw", "data/curated", "data/features", "models"]:
         os.makedirs(os.path.join(base_dir, d), exist_ok=True)
-    if init_db is not None:
-        init_db()
+    async with async_engine.begin() as conn:
+        await conn.run_sync(AsyncBase.metadata.create_all)
 
 
 @app.get("/health")

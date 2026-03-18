@@ -1,9 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
 from pydantic import BaseModel, Field
 from typing import List, Optional
-from database import get_db
-from db_models import BorrowerEntity, CreditApplication, ImmutableAuditLog
+from async_database import get_async_db
+from async_models import BorrowerEntity, CreditApplication, ImmutableAuditLog
 
 router = APIRouter()
 
@@ -47,8 +48,8 @@ class ApplicationResponse(BaseModel):
     audit_log: Optional[dict] = None
 
 @router.post("/applications", response_model=ApplicationResponse)
-def create_application(payload: ApplicationCreate, db: Session = Depends(get_db)):
-    borrower = db.query(BorrowerEntity).filter(BorrowerEntity.id == payload.borrower_id).first()
+async def create_application(payload: ApplicationCreate, db: AsyncSession = Depends(get_async_db)):
+    borrower = (await db.execute(select(BorrowerEntity).filter(BorrowerEntity.id == payload.borrower_id))).scalar_one_or_none()
     if not borrower:
         raise HTTPException(status_code=404, detail="Borrower not found")
     app = CreditApplication(
@@ -60,8 +61,8 @@ def create_application(payload: ApplicationCreate, db: Session = Depends(get_db)
         term_months=payload.term_months,
     )
     db.add(app)
-    db.commit()
-    db.refresh(app)
+    await db.commit()
+    await db.refresh(app)
     return ApplicationResponse(
         id=app.id,
         borrower={"id": borrower.id, "name": borrower.name},
@@ -81,12 +82,12 @@ def create_application(payload: ApplicationCreate, db: Session = Depends(get_db)
     )
 
 @router.get("/applications", response_model=List[ApplicationResponse])
-def list_applications(db: Session = Depends(get_db)):
-    apps = db.query(CreditApplication).all()
+async def list_applications(db: AsyncSession = Depends(get_async_db)):
+    apps = (await db.execute(select(CreditApplication))).scalars().all()
     result = []
     for app in apps:
-        borrower = db.query(BorrowerEntity).filter(BorrowerEntity.id == app.borrower_id).first()
-        audit = db.query(ImmutableAuditLog).filter(ImmutableAuditLog.application_id == app.id).first()
+        borrower = (await db.execute(select(BorrowerEntity).filter(BorrowerEntity.id == app.borrower_id))).scalar_one_or_none()
+        audit = (await db.execute(select(ImmutableAuditLog).filter(ImmutableAuditLog.application_id == app.id))).scalar_one_or_none()
         result.append(
             ApplicationResponse(
                 id=app.id,
@@ -115,12 +116,12 @@ def list_applications(db: Session = Depends(get_db)):
     return result
 
 @router.get("/applications/{app_id}", response_model=ApplicationResponse)
-def get_application(app_id: str, db: Session = Depends(get_db)):
-    app = db.query(CreditApplication).filter(CreditApplication.id == app_id).first()
+async def get_application(app_id: str, db: AsyncSession = Depends(get_async_db)):
+    app = (await db.execute(select(CreditApplication).filter(CreditApplication.id == app_id))).scalar_one_or_none()
     if not app:
         raise HTTPException(status_code=404, detail="Application not found")
-    borrower = db.query(BorrowerEntity).filter(BorrowerEntity.id == app.borrower_id).first()
-    audit = db.query(ImmutableAuditLog).filter(ImmutableAuditLog.application_id == app.id).first()
+    borrower = (await db.execute(select(BorrowerEntity).filter(BorrowerEntity.id == app.borrower_id))).scalar_one_or_none()
+    audit = (await db.execute(select(ImmutableAuditLog).filter(ImmutableAuditLog.application_id == app.id))).scalar_one_or_none()
     return ApplicationResponse(
         id=app.id,
         borrower={"id": borrower.id, "name": borrower.name} if borrower else None,
@@ -146,14 +147,14 @@ def get_application(app_id: str, db: Session = Depends(get_db)):
     )
 
 @router.put("/applications/{app_id}", response_model=ApplicationResponse)
-def update_application(app_id: str, payload: ApplicationUpdate, db: Session = Depends(get_db)):
-    app = db.query(CreditApplication).filter(CreditApplication.id == app_id).first()
+async def update_application(app_id: str, payload: ApplicationUpdate, db: AsyncSession = Depends(get_async_db)):
+    app = (await db.execute(select(CreditApplication).filter(CreditApplication.id == app_id))).scalar_one_or_none()
     if not app:
         raise HTTPException(status_code=404, detail="Application not found")
     for field, value in payload.dict(exclude_unset=True).items():
         setattr(app, field, value)
-    db.commit()
-    db.refresh(app)
+    await db.commit()
+    await db.refresh(app)
     audit = ImmutableAuditLog(
         application_id=app.id,
         input_payload_json=payload.dict(exclude_unset=True),
@@ -165,8 +166,8 @@ def update_application(app_id: str, payload: ApplicationUpdate, db: Session = De
         },
     )
     db.add(audit)
-    db.commit()
-    borrower = db.query(BorrowerEntity).filter(BorrowerEntity.id == app.borrower_id).first()
+    await db.commit()
+    borrower = (await db.execute(select(BorrowerEntity).filter(BorrowerEntity.id == app.borrower_id))).scalar_one_or_none()
     return ApplicationResponse(
         id=app.id,
         borrower={"id": borrower.id, "name": borrower.name} if borrower else None,
