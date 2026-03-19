@@ -1,13 +1,15 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
+import enum
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, LargeBinary, String, Text
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, LargeBinary, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.types import JSON
 
 from database import Base
+
 
 
 def utc_now() -> datetime:
@@ -298,4 +300,85 @@ class CreditRecord(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, onupdate=utc_now)
 
     application: Mapped["CreditApplication"] = relationship("CreditApplication", backref="credit_record")
+
+
+# ─── DECISION STUDIO MODELS (PORTED FROM ASYNC) ───────────────────────
+
+class PolicyStatus(str, enum.Enum):
+    DRAFT = "DRAFT"
+    PENDING_REVIEW = "PENDING_REVIEW"
+    ACTIVE = "ACTIVE"
+    ARCHIVED = "ARCHIVED"
+
+
+class ApprovalStatus(str, enum.Enum):
+    PENDING = "PENDING"
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"
+
+
+class PlatformUser(Base):
+    """Platform user with role-based access control."""
+    __tablename__ = "platform_users"
+
+    id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    email: Mapped[str] = mapped_column(String(320), unique=True, index=True, nullable=False)
+    role: Mapped[str] = mapped_column(String(32), default="MAKER")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+
+    def __repr__(self) -> str:
+        return f"<PlatformUser {self.email} [{self.role}]>"
+
+
+class CreditPolicy(Base):
+    """Versioned credit decision rule-set stored as JSON."""
+    __tablename__ = "credit_policies"
+
+    id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    name: Mapped[str] = mapped_column(String(256), nullable=False)
+    rule_schema: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    status: Mapped[str] = mapped_column(String(32), default="DRAFT")
+    created_by: Mapped[str] = mapped_column(String(128), ForeignKey("platform_users.id"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, onupdate=utc_now)
+
+    __table_args__ = (
+        UniqueConstraint("name", "version", name="uq_policy_name_version"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<CreditPolicy {self.name} v{self.version} [{self.status}]>"
+
+
+class UserApprovalRequest(Base):
+    """Maker-Checker approval workflow record."""
+    __tablename__ = "user_approval_requests"
+
+    id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    policy_id: Mapped[str] = mapped_column(String(128), ForeignKey("credit_policies.id"), nullable=False)
+    requested_by: Mapped[str] = mapped_column(String(128), ForeignKey("platform_users.id"), nullable=False)
+    approved_by: Mapped[str | None] = mapped_column(String(128), ForeignKey("platform_users.id"), nullable=True)
+    status: Mapped[str] = mapped_column(String(32), default="PENDING")
+    comments: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+
+    def __repr__(self) -> str:
+        return f"<UserApprovalRequest {self.id} [{self.status}]>"
+
+
+class SystemAuditLog(Base):
+    """Immutable, append-only audit trail."""
+    __tablename__ = "system_audit_logs"
+
+    id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    user_id: Mapped[str] = mapped_column(String(128), ForeignKey("platform_users.id"), nullable=False)
+    action: Mapped[str] = mapped_column(String(128), nullable=False)
+    entity_type: Mapped[str] = mapped_column(String(128), nullable=False)
+    entity_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    payload: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+
+    def __repr__(self) -> str:
+        return f"<SystemAuditLog {self.action} on {self.entity_type}/{self.entity_id}>"
 

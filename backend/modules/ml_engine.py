@@ -4,8 +4,34 @@ Loads trained models and runs inference for PD, Limit, and Risk Premium.
 """
 import os
 import json
-import numpy as np
-import joblib
+try:
+    import numpy as np
+except ImportError:
+    print("WARNING: numpy not found in ml_engine.py")
+    np = None
+
+try:
+    import pandas as pd
+except ImportError:
+    print("WARNING: pandas not found in ml_engine.py")
+    pd = None
+try:
+    import joblib
+except ImportError:
+    print("WARNING: joblib not found")
+    joblib = None
+
+try:
+    import xgboost as xgb
+except ImportError:
+    print("WARNING: xgboost not found")
+    xgb = None
+
+try:
+    import shap
+except ImportError:
+    print("WARNING: shap not found")
+    shap = None
 from typing import Dict, Any, Tuple
 
 MODEL_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "models")
@@ -66,7 +92,15 @@ def get_model_metrics() -> Dict[str, Any]:
     }
 
 
-def predict_pd(features: Dict[str, Any]) -> Tuple[float, np.ndarray]:
+def explain_prediction(features: Dict[str, Any]) -> Any:
+    """Predict Probability of Default."""
+    if _pd_model is None:
+        load_models()
+
+    feature_values = []
+
+
+def predict_pd(features: Dict[str, Any]) -> Tuple[float, Any]:
     """Predict Probability of Default."""
     if _pd_model is None:
         load_models()

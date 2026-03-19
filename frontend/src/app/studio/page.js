@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, {
   startTransition,
@@ -583,13 +583,13 @@ function DnDFlowContainer({ buildNodeBlueprint }) {
       deleteKeyCode={null}
       fitView
       attributionPosition="bottom-left"
-      className="bg-[#F8F9FB]"
+      className="bg-[#0d0d12] dark"
       defaultEdgeOptions={{
         type: 'smoothstep',
       }}
     >
-      <Background color="#d6d9df" gap={20} size={1} />
-      <Controls className="!bg-white !border-slate-200 !shadow-sm" />
+      <Background color="#1e1e2e" gap={20} size={1} />
+      <Controls className="!bg-[#1a1a24] !border-white/10 !shadow-lg [&>button]:!bg-[#1a1a24] [&>button]:!border-white/10 [&>button]:!text-white [&>button:hover]:!bg-white/10" />
     </ReactFlow>
   );
 }

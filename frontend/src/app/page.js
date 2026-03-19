@@ -6,7 +6,7 @@ import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
 import {
   UploadCloud, ScanSearch, FileText, CheckCircle2, AlertCircle,
-  BrainCircuit, Download, Activity, Scale, Network, ShieldCheck, TrendingUp, AlertTriangle, FileBarChart
+  BrainCircuit, Download, Activity, Scale, Network, ShieldCheck, TrendingUp, AlertTriangle, FileBarChart, ToggleLeft, ToggleRight, Sparkles, Server
 } from "lucide-react";
 import {
   Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
@@ -18,7 +18,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 
-const NEXT_PUBLIC_API_URL = "http://localhost:8000/api";
+const NEXT_PUBLIC_API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
 
 export default function Workspace() {
   const router = useRouter();
@@ -41,6 +41,9 @@ export default function Workspace() {
   // Panel 2 State
   const [researchNotes, setResearchNotes] = useState("");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isDeepScanEnabled, setIsDeepScanEnabled] = useState(false);
+  const [isResearching, setIsResearching] = useState(false);
+  const [researchAgentResult, setResearchAgentResult] = useState(null);
 
   // Panel 3 State
   const [analysisResult, setAnalysisResult] = useState(null);
@@ -94,6 +97,9 @@ export default function Workspace() {
         setAnalysisId(data.analysis_id);
         setUploadStatus("SUCCESS");
         setErrorMessage("");
+        if (isDeepScanEnabled) {
+          handleTriggerResearchAgent("Acme Corp Ltd."); // Trigger background RAG agent
+        }
       } catch (err) {
         console.error("Upload error", err);
         setErrorMessage(err.message);
@@ -103,6 +109,34 @@ export default function Workspace() {
       }
     }
   });
+
+  // --- TRIGGER RESEARCH AGENT ---
+  const handleTriggerResearchAgent = async (entityName) => {
+    setIsResearching(true);
+    let currentToken = authToken;
+    if (user) currentToken = await user.getIdToken();
+
+    try {
+      const res = await fetch(`${NEXT_PUBLIC_API_URL}/research-agent`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${currentToken}`
+        },
+        body: JSON.stringify({ entity_name: entityName })
+      });
+      if (!res.ok) throw new Error("Research Agent failed");
+      const data = await res.json();
+      setResearchAgentResult(data);
+      if (data.summary) {
+        setResearchNotes((prev) => prev ? `${prev}\n\n[Agentic Insight]: ${data.summary}` : `[Agentic Insight]: ${data.summary}`);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsResearching(false);
+    }
+  };
 
   // --- SUBMIT ANALYSIS ---
   const handleAnalyze = async () => {
@@ -262,6 +296,21 @@ export default function Workspace() {
               </div>
             </CardHeader>
             <CardContent className="flex flex-col gap-6">
+              
+              {/* Agentic Scan Toggle */}
+              <div className="flex items-center justify-between p-3 rounded-lg border border-border/50 bg-secondary/10">
+                <div className="flex items-center gap-2">
+                  <Sparkles size={16} className={isDeepScanEnabled ? "text-indigo-400" : "text-muted-foreground"} />
+                  <span className="text-sm font-medium">Deep Web / Regulatory Scan</span>
+                </div>
+                <button 
+                  onClick={() => setIsDeepScanEnabled(!isDeepScanEnabled)}
+                  className={`transition-colors flex items-center ${isDeepScanEnabled ? "text-indigo-500" : "text-muted-foreground"}`}
+                >
+                  {isDeepScanEnabled ? <ToggleRight size={28} /> : <ToggleLeft size={28} />}
+                </button>
+              </div>
+
               {/* Secure Dropbox */}
               <div
                 {...getRootProps()}
@@ -546,6 +595,39 @@ export default function Workspace() {
           <span className="text-sm font-medium">{errorMessage}</span>
         </motion.div>
       )}
+
+      {/* Deep Research Floating Status Drawer / Toast */}
+      {isDeepScanEnabled && (isResearching || researchAgentResult) && (
+        <motion.div
+           initial={{ opacity: 0, y: 50 }}
+           animate={{ opacity: 1, y: 0 }}
+           className="fixed bottom-6 right-6 z-50 bg-[#0c0c14]/80 backdrop-blur-2xl border border-white/10 px-5 py-4 rounded-2xl shadow-[0_0_40px_rgba(0,0,0,0.5)] flex items-center gap-4 w-80"
+        >
+          {isResearching ? (
+            <>
+              <div className="w-8 h-8 rounded-full bg-indigo-500/20 flex items-center justify-center shrink-0">
+                <BrainCircuit size={16} className="text-indigo-400 animate-pulse" />
+              </div>
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-white">Agentic Spotlight Active</p>
+                <p className="text-xs text-indigo-300 mt-0.5">Scraping web & regulatory bodies...</p>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="w-8 h-8 rounded-full bg-emerald-500/20 flex items-center justify-center shrink-0">
+                <CheckCircle2 size={16} className="text-emerald-400" />
+              </div>
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-white">Research Complete</p>
+                <p className="text-xs text-emerald-300 mt-0.5 whitespace-nowrap overflow-hidden text-ellipsis">Score: {researchAgentResult?.risk_score}/100 | Ready</p>
+              </div>
+              <button onClick={() => setResearchAgentResult(null)} className="text-muted-foreground hover:text-white transition-colors">✕</button>
+            </>
+          )}
+        </motion.div>
+      )}
+
     </div>
   );
 }

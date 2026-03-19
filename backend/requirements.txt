@@ -1,4 +1,4 @@
-﻿fastapi
+fastapi
 uvicorn
 python-multipart
 pdfplumber
@@ -33,3 +33,8 @@ faiss-cpu>=1.8.0
 cachetools>=5.3.3
 asyncpg>=0.29.0
 alembic>=1.13.0
+camel-ai[all]
+networkx
+mem0ai[graph]
+python-docx
+lxml

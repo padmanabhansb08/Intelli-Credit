@@ -1,8 +1,8 @@
-﻿import axios from 'axios';
+import axios from 'axios';
 import { DOCUMENT_KIND_CONFIG } from '@/lib/ingestion';
 
-export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api';
-export const STUDIO_API_BASE_URL = `${API_BASE_URL}/studio`;
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8006/api';
+export const STUDIO_API_BASE_URL = `${API_BASE_URL}/decision-studio`;
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -21,14 +21,14 @@ export const buildStudioWebSocketUrl = (path) => {
 };
 
 export const estimateWorkflowCost = async (payload) => {
-  const response = await api.post('/studio/estimate_cost', payload);
+  const response = await api.post('/decision-studio/estimate_cost', payload);
   return response.data;
 };
 
 export const startWorkflowExecution = async (payload) => {
   // Ephemeral Draft Execution - sends raw DAG directly without MongoDB lookup
   try {
-    const executeResponse = await api.post(`/v1/engine/execute/execute-draft`, {
+    const executeResponse = await api.post(`/decision-studio/execute-draft`, {
       trigger_payload: {
         applicant_name: payload.initial_input?.applicant_name || "Acme Corp",
         pan_number: payload.initial_input?.pan_number || "ABCDE1234F",

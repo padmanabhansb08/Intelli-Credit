@@ -10,10 +10,10 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, status
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 
-from async_database import get_async_db
-from async_models import CreditPolicy
+from database import get_db
+from db_models import CreditPolicy
 from dynamic_scorer import evaluate_policy
 from schemas_v2 import DecisionEvaluateRequest, DecisionEvaluateResponse
 
@@ -42,10 +42,9 @@ async def evaluate_decision(
     a full execution trail for regulatory explainability.
     """
     # 1. Fetch the active policy
-    result = await db.execute(
+    policy = db.execute(
         select(CreditPolicy).where(CreditPolicy.id == body.policy_id)
-    )
-    policy = result.scalar_one_or_none()
+    ).scalar_one_or_none()
 
     if policy is None:
         raise HTTPException(

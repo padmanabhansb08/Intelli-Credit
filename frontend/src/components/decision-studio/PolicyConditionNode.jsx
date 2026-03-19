@@ -42,17 +42,17 @@ function PolicyConditionNode({ id, data, selected }) {
     }, [id, data]);
 
     return (
-        <div className={`relative w-72 bg-white rounded-2xl shadow-lg border-2 transition-all
-      ${selected ? 'border-blue-500 shadow-blue-100 ring-2 ring-blue-200/50' : 'border-slate-200 hover:border-slate-300'}`}
+        <div className={`relative w-72 bg-[#1a1a24] text-white rounded-2xl shadow-lg border-2 transition-all
+      ${selected ? 'border-gray-500 shadow-white/5 ring-1 ring-white/20' : 'border-gray-800 hover:border-gray-700'}`}
         >
             {/* Header */}
-            <div className="bg-gradient-to-r from-violet-600 to-indigo-600 rounded-t-[14px] px-4 py-3 flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center backdrop-blur-sm">
+            <div className="bg-[#111111] border-b border-gray-800 rounded-t-[14px] px-4 py-3 flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-gray-900 border border-gray-800 flex items-center justify-center backdrop-blur-sm">
                     <GitBranch className="w-4 h-4 text-white" />
                 </div>
                 <div className="flex flex-col text-white">
-                    <span className="text-[10px] font-bold uppercase tracking-wider opacity-80">Condition</span>
-                    <span className="text-sm font-semibold">{data.label || 'Rule Node'}</span>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Condition</span>
+                    <span className="text-sm font-semibold text-white">{data.label || 'Rule Node'}</span>
                 </div>
             </div>
 
@@ -64,7 +64,7 @@ function PolicyConditionNode({ id, data, selected }) {
                     <select
                         value={data.field || ''}
                         onChange={onFieldChange}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-violet-400 focus:border-transparent transition-all cursor-pointer"
+                        className="w-full bg-[#111111] border border-gray-800 rounded-lg px-3 py-2 text-sm font-medium text-white focus:outline-none focus:ring-1 focus:ring-white focus:border-transparent transition-all cursor-pointer [&>option]:bg-[#1a1a24]"
                     >
                         <option value="" disabled>Select attribute…</option>
                         {FINANCIAL_ATTRIBUTES.map(attr => (
@@ -79,7 +79,7 @@ function PolicyConditionNode({ id, data, selected }) {
                     <select
                         value={data.operator || '>='}
                         onChange={onOperatorChange}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-violet-400 focus:border-transparent transition-all cursor-pointer"
+                        className="w-full bg-[#111111] border border-gray-800 rounded-lg px-3 py-2 text-sm font-mono font-bold text-white focus:outline-none focus:ring-1 focus:ring-white focus:border-transparent transition-all cursor-pointer [&>option]:bg-[#1a1a24]"
                     >
                         {OPERATORS.map(op => (
                             <option key={op.value} value={op.value}>{op.label}</option>
@@ -95,13 +95,13 @@ function PolicyConditionNode({ id, data, selected }) {
                         value={data.value ?? ''}
                         onChange={onValueChange}
                         placeholder="e.g. 1.25"
-                        className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono font-bold text-slate-800 placeholder:text-slate-300 focus:outline-none focus:ring-2 focus:ring-violet-400 focus:border-transparent transition-all"
+                        className="w-full bg-[#111111] border border-gray-800 rounded-lg px-3 py-2 text-sm font-mono font-bold text-white placeholder:text-gray-600 focus:outline-none focus:ring-1 focus:ring-white focus:border-transparent transition-all"
                     />
                 </div>
 
                 {/* Expression Preview */}
-                <div className="bg-slate-900 rounded-lg px-3 py-2 mt-1">
-                    <code className="text-xs text-emerald-400 font-mono">
+                <div className="bg-[#111111] border border-gray-800 rounded-lg px-3 py-2 mt-1">
+                    <code className="text-xs text-white font-mono">
                         {data.field || '???'} {data.operator || '>='} {data.value || '???'}
                     </code>
                 </div>
@@ -109,14 +109,14 @@ function PolicyConditionNode({ id, data, selected }) {
 
             {/* TRUE / FALSE labels */}
             <div className="absolute -bottom-7 w-full flex justify-between px-10 text-[9px] font-bold uppercase tracking-widest">
-                <span className="text-emerald-500 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">TRUE</span>
-                <span className="text-rose-500 bg-rose-50 px-2 py-0.5 rounded-full border border-rose-200">FALSE</span>
+                <span className="text-white bg-[#111111] px-2 py-0.5 rounded-full border border-gray-700">TRUE</span>
+                <span className="text-gray-400 bg-[#111111] px-2 py-0.5 rounded-full border border-gray-800">FALSE</span>
             </div>
 
             {/* Handles */}
-            <Handle type="target" position={Position.Top} className="!w-3 !h-3 !bg-violet-500 !border-2 !border-white" />
-            <Handle type="source" position={Position.Bottom} id="on_true" className="!w-3 !h-3 !bg-emerald-500 !border-2 !border-white" style={{ left: '30%' }} />
-            <Handle type="source" position={Position.Bottom} id="on_false" className="!w-3 !h-3 !bg-rose-500 !border-2 !border-white" style={{ left: '70%' }} />
+            <Handle type="target" position={Position.Top} className="!w-3 !h-3 !bg-gray-500 !border-2 !border-[#1a1a24]" />
+            <Handle type="source" position={Position.Bottom} id="on_true" className="!w-3 !h-3 !bg-white !border-2 !border-[#1a1a24]" style={{ left: '30%' }} />
+            <Handle type="source" position={Position.Bottom} id="on_false" className="!w-3 !h-3 !bg-gray-600 !border-2 !border-[#1a1a24]" style={{ left: '70%' }} />
         </div>
     );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
     Activity,
@@ -31,10 +31,28 @@ export default function PortfolioPage() {
         setSearchTerm,
         filters,
         setFilters,
-        results,
+        results: apiResults,
         isLoading,
         isError,
     } = useIntelligentSearch({ delay: 300 });
+
+    const [portfolioData, setPortfolioData] = useState(() => {
+        if (typeof window !== 'undefined') {
+            const saved = localStorage.getItem('portfolioRecords');
+            return saved ? JSON.parse(saved) : [];
+        }
+        return [];
+    });
+
+    useEffect(() => {
+        if (apiResults && apiResults.length > 0) {
+            setPortfolioData(apiResults);
+            localStorage.setItem('portfolioRecords', JSON.stringify(apiResults));
+        }
+    }, [apiResults]);
+
+    // Use portfolioData instead of raw apiResults for rendering
+    const results = portfolioData.length > 0 ? portfolioData : apiResults;
 
     const [expandedRow, setExpandedRow] = useState(null);
     const [isDownloading, setIsDownloading] = useState(false);

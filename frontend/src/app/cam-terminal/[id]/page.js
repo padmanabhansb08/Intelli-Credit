@@ -14,7 +14,7 @@ import {
     LineChart, Line, CartesianGrid, Legend, AreaChart, Area
 } from "recharts";
 
-const NEXT_PUBLIC_API_URL = "http://localhost:8000/api";
+const NEXT_PUBLIC_API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
 
 // --- SKELETON COMPONENTS ---
 const SkeletonPulse = ({ className }) => (
@@ -221,7 +221,7 @@ export default function CAMTerminalView() {
                                     <div className="text-right flex items-center gap-6">
                                         <div>
                                             <h2 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">Decision</h2>
-                                            <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold ${analysisData?.decision?.decision === "APPROVED" ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" : "bg-rose-500/10 text-rose-400 border border-rose-500/20"
+                                            <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold ${analysisData?.decision?.decision === "APPROVED" ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20" : "bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20"
                                                 }`}>
                                                 <ShieldCheck className="w-3 h-3" /> {analysisData?.decision?.decision}
                                             </span>

@@ -20,7 +20,7 @@ import { format } from 'date-fns';
 import ReactDiffViewer from 'react-diff-viewer-continued';
 import { motion, AnimatePresence } from 'framer-motion';
 
-const NEXT_PUBLIC_API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+const NEXT_PUBLIC_API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api';
 
 const STATUS_CONFIG = {
     PENDING: { icon: Clock, color: 'text-amber-600', bg: 'bg-amber-100', border: 'border-amber-200', label: 'Pending Review' },
@@ -45,7 +45,7 @@ export default function ReviewDetail() {
         setIsLoading(true);
         try {
             const token = await user.getIdToken();
-            const res = await fetch(`${NEXT_PUBLIC_API_URL}/api/v2/approvals/${id}`, {
+            const res = await fetch(`${NEXT_PUBLIC_API_URL}/v2/approvals/${id}`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -73,7 +73,7 @@ export default function ReviewDetail() {
         try {
             const token = await user.getIdToken();
             const endpoint = actionType === 'APPROVE' ? 'approve' : 'reject';
-            const res = await fetch(`${NEXT_PUBLIC_API_URL}/api/v2/approvals/${endpoint}/${id}`, {
+            const res = await fetch(`${NEXT_PUBLIC_API_URL}/v2/approvals/${endpoint}/${id}`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

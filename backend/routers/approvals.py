@@ -23,17 +23,16 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Header, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select, func
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 
-from async_database import get_async_db
-from async_models import (
-    ApprovalRequest,
+from database import get_db
+from db_models import (
+    UserApprovalRequest as ApprovalRequest,
     ApprovalStatus,
-    AuditLog,
+    SystemAuditLog as AuditLog,
     CreditPolicy,
     PolicyStatus,
-    User,
-    UserRole,
+    PlatformUser as User,
 )
 import math
 
@@ -101,7 +100,7 @@ class ApprovalDetailResponse(BaseModel):
 # and looks up the User record.
 
 async def get_current_user(
-    db: AsyncSession = Depends(get_async_db),
+    db: Session = Depends(get_db),
     x_user_id: Optional[str] = Header(None, alias="X-User-Id"),
 ) -> User:
     if not x_user_id:
@@ -109,19 +108,12 @@ async def get_current_user(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Missing X-User-Id header.  Authentication required.",
         )
-    try:
-        uid = uuid.UUID(x_user_id)
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="X-User-Id must be a valid UUID.",
-        )
-    result = await db.execute(select(User).where(User.id == uid))
-    user = result.scalar_one_or_none()
+    # Using the string ID directly as defined in db_models
+    user = db.execute(select(User).where(User.id == x_user_id)).scalar_one_or_none()
     if user is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"User {uid} not found.",
+            detail=f"User {x_user_id} not found.",
         )
     return user
 
@@ -130,20 +122,20 @@ async def get_current_user(
 
 def require_maker(user: User) -> None:
     """Raises 403 if the user is not a MAKER or ADMIN."""
-    if user.role not in (UserRole.MAKER, UserRole.ADMIN):
+    if user.role not in ("MAKER", "ADMIN"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"Role '{user.role.value}' is not permitted to submit policies. "
+            detail=f"Role '{user.role}' is not permitted to submit policies. "
                    f"Only MAKER or ADMIN roles may use this endpoint.",
         )
 
 
 def require_checker(user: User) -> None:
     """Raises 403 if the user is not a CHECKER or ADMIN."""
-    if user.role not in (UserRole.CHECKER, UserRole.ADMIN):
+    if user.role not in ("CHECKER", "ADMIN"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"Role '{user.role.value}' is not permitted to approve/reject. "
+            detail=f"Role '{user.role}' is not permitted to approve/reject. "
                    f"Only CHECKER or ADMIN roles may use this endpoint.",
         )
 
@@ -160,7 +152,7 @@ async def list_approvals(
     page: int = 1,
     page_size: int = 20,
     status_filter: Optional[ApprovalStatus] = None,
-    db: AsyncSession = Depends(get_async_db),
+    db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     query = select(ApprovalRequest, CreditPolicy, User).join(
@@ -177,10 +169,10 @@ async def list_approvals(
     query = query.order_by(ApprovalRequest.created_at.desc())
     query = query.offset((page - 1) * page_size).limit(page_size)
 
-    total = (await db.execute(count_query)).scalar_one()
+    total = db.scalar(count_query)
     total_pages = max(1, math.ceil(total / page_size))
 
-    result = await db.execute(query)
+    result = db.execute(query)
     items = []
     for req, policy, requester in result:
         items.append({
@@ -214,8 +206,8 @@ async def list_approvals(
     summary="Get detailed view of an approval request including schema diff",
 )
 async def get_approval_detail(
-    request_id: uuid.UUID,
-    db: AsyncSession = Depends(get_async_db),
+    request_id: str,
+    db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     query = select(ApprovalRequest, CreditPolicy, User).join(
@@ -224,22 +216,20 @@ async def get_approval_detail(
         User, ApprovalRequest.requested_by == User.id
     ).where(ApprovalRequest.id == request_id)
 
-    result = await db.execute(query)
-    row = result.first()
+    row = db.execute(query).first()
     if not row:
         raise HTTPException(status_code=404, detail="Request not found.")
 
     req, policy, requester = row
 
     # Find the currently active policy with the same name to show diff
-    old_active_result = await db.execute(
+    old_active = db.execute(
         select(CreditPolicy).where(
             CreditPolicy.name == policy.name,
             CreditPolicy.status == PolicyStatus.ACTIVE,
             CreditPolicy.id != policy.id
         )
-    )
-    old_active = old_active_result.scalar_one_or_none()
+    ).scalar_one_or_none()
 
     old_policy_dict = None
     if old_active:
@@ -276,7 +266,7 @@ async def get_approval_detail(
 )
 async def submit_for_review(
     body: SubmitRequest,
-    db: AsyncSession = Depends(get_async_db),
+    db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
     idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
 ):
@@ -284,10 +274,10 @@ async def submit_for_review(
     require_maker(user)
 
     # 2. Fetch the policy
-    result = await db.execute(
-        select(CreditPolicy).where(CreditPolicy.id == body.policy_id)
-    )
-    policy = result.scalar_one_or_none()
+    policy_id_str = str(body.policy_id)
+    policy = db.execute(
+        select(CreditPolicy).where(CreditPolicy.id == policy_id_str)
+    ).scalar_one_or_none()
     if policy is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -296,7 +286,7 @@ async def submit_for_review(
     if policy.status != PolicyStatus.DRAFT:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=f"Policy is in '{policy.status.value}' state. Only DRAFT policies can be submitted.",
+            detail=f"Policy is in '{policy.status}' state. Only DRAFT policies can be submitted.",
         )
 
     # 3. Transition policy → PENDING_REVIEW
@@ -305,15 +295,15 @@ async def submit_for_review(
 
     # 4. Create an ApprovalRequest
     approval_req = ApprovalRequest(
-        id=uuid.uuid4(),
+        id=str(uuid.uuid4()),
         policy_id=policy.id,
         requested_by=user.id,
         status=ApprovalStatus.PENDING,
         created_at=datetime.now(timezone.utc),
     )
     db.add(approval_req)
-    await db.commit()
-    await db.refresh(approval_req)
+    db.commit()
+    db.refresh(approval_req)
 
     return SubmitResponse(
         request_id=approval_req.id,
@@ -332,9 +322,9 @@ async def submit_for_review(
     summary="Approve a pending policy submission (atomic transaction)",
 )
 async def approve_request(
-    request_id: uuid.UUID,
+    request_id: str,
     body: ReviewRequest = ReviewRequest(),
-    db: AsyncSession = Depends(get_async_db),
+    db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
     idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
 ):
@@ -342,10 +332,9 @@ async def approve_request(
     require_checker(user)
 
     # 2. Fetch the approval request
-    result = await db.execute(
+    approval_req = db.execute(
         select(ApprovalRequest).where(ApprovalRequest.id == request_id)
-    )
-    approval_req = result.scalar_one_or_none()
+    ).scalar_one_or_none()
     if approval_req is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -354,7 +343,7 @@ async def approve_request(
     if approval_req.status != ApprovalStatus.PENDING:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=f"Request is already '{approval_req.status.value}'. Cannot approve.",
+            detail=f"Request is already '{approval_req.status}'. Cannot approve.",
         )
 
     # 3. Self-approval prevention — Maker cannot approve their own submission
@@ -365,10 +354,9 @@ async def approve_request(
         )
 
     # 4. Fetch the policy being approved
-    policy_result = await db.execute(
+    policy = db.execute(
         select(CreditPolicy).where(CreditPolicy.id == approval_req.policy_id)
-    )
-    policy = policy_result.scalar_one_or_none()
+    ).scalar_one_or_none()
     if policy is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -381,14 +369,13 @@ async def approve_request(
 
     try:
         # 4a. Archive the currently ACTIVE policy with the same name (if any)
-        active_result = await db.execute(
+        old_active = db.execute(
             select(CreditPolicy).where(
                 CreditPolicy.name == policy.name,
                 CreditPolicy.status == PolicyStatus.ACTIVE,
                 CreditPolicy.id != policy.id,
             )
-        )
-        old_active = active_result.scalar_one_or_none()
+        ).scalar_one_or_none()
 
         old_payload = None
         if old_active is not None:
@@ -412,7 +399,7 @@ async def approve_request(
 
         # 4d. Insert comprehensive AuditLog
         audit = AuditLog(
-            id=uuid.uuid4(),
+            id=str(uuid.uuid4()),
             user_id=user.id,
             action="POLICY_APPROVED",
             entity_type="CreditPolicy",
@@ -436,11 +423,11 @@ async def approve_request(
         db.add(audit)
 
         # Commit ALL changes atomically
-        await db.commit()
+        db.commit()
 
     except Exception:
         # If ANYTHING fails (even audit log insertion), roll back everything
-        await db.rollback()
+        db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Atomic transaction failed. All changes have been rolled back.",
@@ -465,9 +452,9 @@ async def approve_request(
     summary="Reject a pending policy submission",
 )
 async def reject_request(
-    request_id: uuid.UUID,
+    request_id: str,
     body: ReviewRequest = ReviewRequest(),
-    db: AsyncSession = Depends(get_async_db),
+    db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
     idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
 ):
@@ -475,10 +462,9 @@ async def reject_request(
     require_checker(user)
 
     # 2. Fetch the approval request
-    result = await db.execute(
+    approval_req = db.execute(
         select(ApprovalRequest).where(ApprovalRequest.id == request_id)
-    )
-    approval_req = result.scalar_one_or_none()
+    ).scalar_one_or_none()
     if approval_req is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -487,17 +473,16 @@ async def reject_request(
     if approval_req.status != ApprovalStatus.PENDING:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=f"Request is already '{approval_req.status.value}'. Cannot reject.",
+            detail=f"Request is already '{approval_req.status}'. Cannot reject.",
         )
 
     now = datetime.now(timezone.utc)
 
     try:
         # Revert policy back to DRAFT
-        policy_result = await db.execute(
+        policy = db.execute(
             select(CreditPolicy).where(CreditPolicy.id == approval_req.policy_id)
-        )
-        policy = policy_result.scalar_one_or_none()
+        ).scalar_one_or_none()
         if policy:
             policy.status = PolicyStatus.DRAFT
             policy.updated_at = now
@@ -509,7 +494,7 @@ async def reject_request(
 
         # Audit log
         audit = AuditLog(
-            id=uuid.uuid4(),
+            id=str(uuid.uuid4()),
             user_id=user.id,
             action="POLICY_REJECTED",
             entity_type="CreditPolicy",
@@ -525,10 +510,10 @@ async def reject_request(
         )
         db.add(audit)
 
-        await db.commit()
+        db.commit()
 
     except Exception:
-        await db.rollback()
+        db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Transaction failed. All changes have been rolled back.",

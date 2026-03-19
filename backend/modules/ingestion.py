@@ -1,4 +1,4 @@
-﻿"""
+"""
 Data Ingestion Module
 Handles PDF parsing, bank statement analysis, bureau parsing, and financial ratio extraction.
 """
@@ -10,16 +10,44 @@ import re
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 import httpx
-import numpy as np
-import pandas as pd
-import pdfplumber
-import pytesseract
-from pdf2image import convert_from_bytes
+try:
+    import numpy as np
+except ImportError:
+    print("WARNING: numpy not found, some features in ingestion.py may be disabled")
+    np = None
+try:
+    import pandas as pd
+except ImportError:
+    print("WARNING: pandas not found")
+    pd = None
+
+try:
+    import pdfplumber
+except ImportError:
+    print("WARNING: pdfplumber not found")
+    pdfplumber = None
+
+try:
+    import pytesseract
+except ImportError:
+    print("WARNING: pytesseract not found")
+    pytesseract = None
+try:
+    from pdf2image import convert_from_bytes
+except ImportError:
+    print("WARNING: pdf2image not found")
+    convert_from_bytes = None
 
 try:
     from databricks import sql
 except ImportError:
     sql = None
+
+try:
+    from scipy.stats import norm
+except ImportError:
+    print("WARNING: scipy not found")
+    norm = None
 
 DATABRICKS_SERVER_HOSTNAME = os.environ.get("DATABRICKS_SERVER_HOSTNAME", "mock.cloud.databricks.com")
 DATABRICKS_HTTP_PATH = os.environ.get("DATABRICKS_HTTP_PATH", "sql/1.0/endpoints/mock")
@@ -438,7 +466,7 @@ def _build_financial_extraction_prompt(document_type_hint: str, regex_hints: Opt
         "be thorough. Parse complex tabular structures, nested headers, notes to accounts, "
         "and Schedule III format balance sheets. Return strict JSON only. Use null when "
         "data is genuinely unavailable. All monetary values should be in the same unit "
-        "(Lakhs or Crores — state which in document_summary).\n\n"
+        "Lakhs or Crores — state which in document_summary).\n\n"
     )
 
     # Type-specific extraction instructions
@@ -837,7 +865,7 @@ def _categorize_transactions_with_gemini(records: Sequence[Mapping[str, Any]]) -
     return all_classifications, service_status
 
 
-def _infer_min_balance_threshold(daily_balances: pd.Series) -> float:
+def _infer_min_balance_threshold(daily_balances: Any) -> float:
     if daily_balances.empty:
         return 0.0
     median_balance = float(daily_balances.median())
@@ -852,7 +880,7 @@ def _infer_min_balance_threshold(daily_balances: pd.Series) -> float:
     return 1000.0
 
 
-def _parse_statement_dataframe(df: pd.DataFrame) -> Dict[str, Any]:
+def _parse_statement_dataframe(df: Any) -> Dict[str, Any]:
     working = df.copy()
     working.columns = [str(column).strip() for column in working.columns]
 

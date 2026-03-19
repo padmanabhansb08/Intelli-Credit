@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import os
 from typing import Generator
@@ -8,6 +8,7 @@ from sqlalchemy.orm import declarative_base, sessionmaker
 
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./intelli_credit.db")
+
 
 connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
 
@@ -26,6 +27,4 @@ def get_db() -> Generator:
 
 def init_db() -> None:
     import db_models  # noqa: F401
-
     Base.metadata.create_all(bind=engine)
-

@@ -1,4 +1,4 @@
-﻿import React, { memo } from 'react';
+import React, { memo } from 'react';
 import { Handle, Position } from 'reactflow';
 import {
   AlertTriangle,
@@ -12,28 +12,28 @@ import {
 
 const runtimeTone = {
   idle: {
-    badge: 'bg-secondary/50 text-muted-foreground',
-    ring: 'border-border',
+    badge: 'bg-[#111111] text-gray-500',
+    ring: 'border-gray-800',
   },
   running: {
-    badge: 'bg-primary/20 text-primary',
-    ring: 'border-primary shadow-primary/10',
+    badge: 'bg-white/10 text-white',
+    ring: 'border-white/50 shadow-white/10',
   },
   retrying: {
-    badge: 'bg-warning/20 text-warning',
-    ring: 'border-warning shadow-warning/10',
+    badge: 'bg-gray-800 text-gray-300',
+    ring: 'border-gray-600 shadow-gray-800/10',
   },
   success: {
-    badge: 'bg-success/20 text-success',
-    ring: 'border-success shadow-success/10',
+    badge: 'bg-gray-900 text-white border border-gray-700',
+    ring: 'border-gray-500 shadow-gray-900/10',
   },
   failed: {
-    badge: 'bg-destructive/20 text-destructive',
-    ring: 'border-destructive shadow-destructive/10',
+    badge: 'bg-[#1a1a1a] text-gray-400 border border-gray-700',
+    ring: 'border-gray-700 shadow-[#1a1a1a]/10',
   },
   skipped: {
-    badge: 'bg-muted text-muted-foreground',
-    ring: 'border-muted-foreground/30',
+    badge: 'bg-black text-gray-600',
+    ring: 'border-gray-800/50',
   },
 };
 
@@ -45,7 +45,7 @@ const CustomHandle = ({ type, position, colorClass, id, style }) => (
     position={position}
     id={id}
     style={style}
-    className={`w-3 h-3 ${colorClass} border-2 border-white transition-all hover:scale-125 z-50`}
+    className={`w-3 h-3 ${colorClass} border-2 border-[#1A1A1A] transition-all hover:scale-125 z-50`}
   />
 );
 
@@ -65,7 +65,7 @@ const ErrorHandle = () => (
     type="source"
     position={Position.Right}
     id="error"
-    colorClass="bg-rose-500"
+    colorClass="bg-gray-600"
     style={{ top: '50%' }}
   />
 );
@@ -75,14 +75,14 @@ export const TriggerNode = memo(({ data, selected }) => {
   const tone = runtimeTone[runtime.status] || runtimeTone.idle;
 
   return (
-    <div className={`relative flex flex-col items-center bg-card p-5 rounded-xl shadow-lg border-2 ${selected ? 'shadow-xl ring-2 ring-primary/20' : ''} ${tone.ring} transition-all`}>
+    <div className={`relative flex flex-col items-center bg-[#1A1A1A] p-5 rounded-xl shadow-lg border border-gray-800 ${selected ? 'shadow-xl ring-1 ring-white/20' : ''} ${tone.ring} transition-all`}>
       <RuntimeBadge data={data} />
-      <div className="w-12 h-12 rounded-full bg-success/10 border border-success/30 flex items-center justify-center text-success mb-3">
+      <div className="w-12 h-12 rounded-full bg-[#111111] border border-gray-700 flex items-center justify-center text-white mb-3">
         <Play className="w-5 h-5 ml-1" />
       </div>
-      <span className="text-sm font-semibold text-foreground">{data.label}</span>
-      <span className="text-[10px] text-muted-foreground mt-1 font-bold tracking-wider uppercase">Initiation</span>
-      <CustomHandle type="source" position={Position.Bottom} colorClass="bg-success" />
+      <span className="text-sm font-semibold text-white">{data.label}</span>
+      <span className="text-[10px] text-gray-500 mt-1 font-bold tracking-wider uppercase">Initiation</span>
+      <CustomHandle type="source" position={Position.Bottom} colorClass="bg-white" />
     </div>
   );
 });
@@ -92,18 +92,18 @@ export const DocumentClassificationNode = memo(({ data, selected }) => {
   const tone = runtimeTone[runtime.status] || runtimeTone.idle;
 
   return (
-    <div className={`relative w-80 bg-card/95 backdrop-blur-md rounded-xl shadow-md border-2 ${selected ? 'shadow-lg ring-2 ring-primary/20' : ''} ${tone.ring} p-0 overflow-hidden text-left transition-all group`}>
+    <div className={`relative w-80 bg-[#1A1A1A] rounded-xl shadow-md border border-gray-800 ${selected ? 'shadow-lg ring-1 ring-white/20' : ''} ${tone.ring} p-0 overflow-hidden text-left transition-all group`}>
       <RuntimeBadge data={data} />
-      <div className="bg-gradient-to-r from-primary/80 to-primary p-3 flex items-center gap-3">
-        <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center text-primary-foreground shrink-0 backdrop-blur-sm">
+      <div className="bg-[#111111] border-b border-gray-800 p-3 flex items-center gap-3">
+        <div className="w-8 h-8 rounded-lg bg-gray-900 border border-gray-800 flex items-center justify-center text-white shrink-0">
           <FileText className="w-4 h-4" />
         </div>
-        <div className="flex flex-col text-primary-foreground flex-1 pr-20">
-          <span className="text-[10px] font-bold uppercase tracking-wider opacity-80">IDP Extraction</span>
-          <span className="text-sm font-semibold">{data.label || 'Document Classifier'}</span>
+        <div className="flex flex-col text-white flex-1 pr-20">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">IDP Extraction</span>
+          <span className="text-sm font-semibold text-white">{data.label || 'Document Classifier'}</span>
         </div>
         {data.confidence && (
-          <div className="bg-white/20 border border-white/30 px-2 py-1 rounded-md flex items-center gap-1 backdrop-blur-md">
+          <div className="bg-gray-900 border border-gray-700 px-2 py-1 rounded-md flex items-center gap-1">
             <CheckCircle2 className="w-3 h-3 text-white" />
             <span className="text-[10px] font-bold text-white">{data.confidence}%</span>
           </div>
@@ -111,11 +111,11 @@ export const DocumentClassificationNode = memo(({ data, selected }) => {
       </div>
 
       {data.error && (
-        <div className="bg-destructive/10 border-b border-destructive/20 p-3 flex items-start gap-2">
-          <AlertTriangle className="w-4 h-4 text-destructive shrink-0 mt-0.5" />
+        <div className="bg-[#111111] border-b border-gray-800 p-3 flex items-start gap-2">
+          <AlertTriangle className="w-4 h-4 text-gray-500 shrink-0 mt-0.5" />
           <div className="flex-1">
-            <p className="text-xs text-destructive font-semibold">{data.error}</p>
-            <button className="mt-2 text-xs bg-background border border-border text-foreground px-3 py-1.5 rounded-md font-semibold flex items-center gap-1 hover:bg-muted transition-colors shadow-sm">
+            <p className="text-xs text-gray-400 font-semibold">{data.error}</p>
+            <button className="mt-2 text-xs bg-[#1A1A1A] border border-gray-700 text-white px-3 py-1.5 rounded-md font-semibold flex items-center gap-1 hover:bg-gray-800 transition-colors shadow-sm">
               <RefreshCw className="w-3 h-3" /> Re-upload Document
             </button>
           </div>
@@ -123,26 +123,26 @@ export const DocumentClassificationNode = memo(({ data, selected }) => {
       )}
 
       {!data.error && data.extractedFields && (
-        <div className="p-3 bg-secondary/20 border-b border-border">
-          <span className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground mb-2 block">Extracted Entities</span>
-          <div className="bg-background rounded-md border border-border overflow-hidden shadow-sm">
+        <div className="p-3 bg-[#111111] border-b border-gray-800">
+          <span className="text-[10px] uppercase font-bold tracking-wider text-gray-500 mb-2 block">Extracted Entities</span>
+          <div className="bg-[#1A1A1A] rounded-md border border-gray-800 overflow-hidden shadow-sm">
             {data.extractedFields.map((field, idx) => (
-              <div key={idx} className={`flex justify-between p-1.5 px-3 text-xs ${idx !== data.extractedFields.length - 1 ? 'border-b border-border/50' : ''}`}>
-                <span className="text-muted-foreground font-medium">{field.key}</span>
-                <span className="text-foreground font-semibold font-mono">{field.value}</span>
+              <div key={idx} className={`flex justify-between p-1.5 px-3 text-xs ${idx !== data.extractedFields.length - 1 ? 'border-b border-gray-800' : ''}`}>
+                <span className="text-gray-400 font-medium">{field.key}</span>
+                <span className="text-white font-semibold font-mono">{field.value}</span>
               </div>
             ))}
           </div>
         </div>
       )}
 
-      <div className="p-2.5 bg-card flex justify-between items-center px-4">
-        <span className="text-[10px] text-muted-foreground font-medium">Model: <span className="text-foreground font-semibold">SciBERT+Flan-T5</span></span>
-        {runtime.durationMs != null && <span className="text-[10px] text-muted-foreground">{runtime.durationMs} ms</span>}
+      <div className="p-2.5 bg-[#1A1A1A] flex justify-between items-center px-4">
+        <span className="text-[10px] text-gray-500 font-medium">Model: <span className="text-gray-300 font-semibold">SciBERT+Flan-T5</span></span>
+        {runtime.durationMs != null && <span className="text-[10px] text-gray-500">{runtime.durationMs} ms</span>}
       </div>
 
-      <CustomHandle type="target" position={Position.Top} colorClass="bg-success" />
-      <CustomHandle type="source" position={Position.Bottom} colorClass="bg-primary" />
+      <CustomHandle type="target" position={Position.Top} colorClass="bg-gray-400" />
+      <CustomHandle type="source" position={Position.Bottom} colorClass="bg-white" />
       <ErrorHandle />
     </div>
   );
@@ -153,37 +153,37 @@ export const IntegrationNode = memo(({ data, selected }) => {
   const tone = runtimeTone[runtime.status] || runtimeTone.idle;
 
   return (
-    <div className={`relative w-72 bg-card rounded-xl shadow-md border-2 ${selected ? 'ring-2 ring-primary/30 shadow-lg' : ''} ${tone.ring} flex items-stretch overflow-hidden transition-all text-left`}>
+    <div className={`relative w-72 bg-[#1A1A1A] rounded-xl shadow-md border border-gray-800 ${selected ? 'ring-1 ring-white/20 shadow-lg' : ''} ${tone.ring} flex items-stretch overflow-hidden transition-all text-left`}>
       <RuntimeBadge data={data} />
-      <div className="w-1.5 bg-primary opacity-80 shrink-0"></div>
+      <div className="w-1.5 bg-gray-500 shrink-0"></div>
 
       <div className="p-3 flex-1 flex flex-col gap-2 pr-20">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center text-primary shrink-0">
+          <div className="w-10 h-10 rounded-lg bg-[#111111] border border-gray-700 flex items-center justify-center text-white shrink-0">
             <Building2 className="w-5 h-5" />
           </div>
           <div className="flex flex-col min-w-0">
-            <span className="text-[10px] text-primary font-bold uppercase tracking-wider truncate">{data.connection || 'API Gateway'}</span>
-            <span className="text-sm font-semibold text-foreground truncate">{data.label}</span>
+            <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider truncate">{data.connection || 'API Gateway'}</span>
+            <span className="text-sm font-semibold text-white truncate">{data.label}</span>
           </div>
         </div>
 
         {data.warning && (
-          <div className="mt-2 bg-warning/10 border border-warning/20 rounded-md p-2 flex gap-2">
-            <AlertTriangle className="w-4 h-4 text-warning shrink-0 mt-0.5" />
-            <span className="text-xs text-warning font-medium">{data.warningDetails || 'High latency detected down-stream.'}</span>
+          <div className="mt-2 bg-[#111111] border border-gray-800 rounded-md p-2 flex gap-2">
+            <AlertTriangle className="w-4 h-4 text-gray-400 shrink-0 mt-0.5" />
+            <span className="text-xs text-gray-300 font-medium">{data.warningDetails || 'High latency detected down-stream.'}</span>
           </div>
         )}
 
         {runtime.error && (
-          <div className="bg-destructive/10 border border-destructive/20 rounded-md p-2 text-xs text-destructive font-medium">
+          <div className="bg-[#111111] border border-gray-800 rounded-md p-2 text-xs text-gray-400 font-medium">
             {runtime.error}
           </div>
         )}
       </div>
 
-      <CustomHandle type="target" position={Position.Top} colorClass="bg-primary/50" />
-      <CustomHandle type="source" position={Position.Bottom} colorClass="bg-primary" />
+      <CustomHandle type="target" position={Position.Top} colorClass="bg-gray-600" />
+      <CustomHandle type="source" position={Position.Bottom} colorClass="bg-gray-400" />
       <ErrorHandle />
     </div>
   );
@@ -194,35 +194,35 @@ export const ConditionNode = memo(({ data, selected }) => {
   const tone = runtimeTone[runtime.status] || runtimeTone.idle;
 
   return (
-    <div className={`relative w-64 bg-card rounded-xl shadow-md border-2 ${selected ? 'shadow-lg ring-2 ring-primary/20' : ''} ${tone.ring} p-4 flex flex-col transition-all text-left`}>
+    <div className={`relative w-64 bg-[#1A1A1A] rounded-xl shadow-md border border-gray-800 ${selected ? 'shadow-lg ring-1 ring-white/20' : ''} ${tone.ring} p-4 flex flex-col transition-all text-left`}>
       <RuntimeBadge data={data} />
       <div className="flex items-center gap-3 mb-3 pr-20">
-        <div className="w-10 h-10 rounded-lg bg-secondary flex items-center justify-center text-foreground shrink-0 border border-border">
+        <div className="w-10 h-10 rounded-lg bg-[#111111] border border-gray-700 flex items-center justify-center text-white shrink-0">
           <Share2 className="w-5 h-5 opacity-70" />
         </div>
         <div className="flex flex-col min-w-0">
-          <span className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest">Routing Logic</span>
-          <span className="text-sm font-semibold text-foreground truncate">{data.label}</span>
+          <span className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">Routing Logic</span>
+          <span className="text-sm font-semibold text-white truncate">{data.label}</span>
         </div>
       </div>
 
-      <div className="bg-background rounded-lg p-2.5 border border-border">
-        <span className="text-xs text-muted-foreground font-mono break-all line-clamp-2">{data.expression || data.assignmentDetails}</span>
+      <div className="bg-[#111111] rounded-lg p-2.5 border border-gray-800">
+        <span className="text-xs text-gray-400 font-mono break-all line-clamp-2">{data.expression || data.assignmentDetails}</span>
       </div>
 
       {runtime.output?.branch && (
-        <div className="mt-3 text-[10px] font-bold text-muted-foreground uppercase tracking-wide">
-          Branch Evaluated: <span className="text-foreground">{runtime.output.branch}</span>
+        <div className="mt-3 text-[10px] font-bold text-gray-500 uppercase tracking-wide">
+          Branch Evaluated: <span className="text-white">{runtime.output.branch}</span>
         </div>
       )}
 
-      <CustomHandle type="target" position={Position.Top} colorClass="bg-primary/60" />
-      <CustomHandle type="source" position={Position.Bottom} id="true" colorClass="bg-success" style={{ left: '33%' }} />
-      <CustomHandle type="source" position={Position.Bottom} id="false" colorClass="bg-destructive" style={{ left: '67%' }} />
+      <CustomHandle type="target" position={Position.Top} colorClass="bg-gray-500" />
+      <CustomHandle type="source" position={Position.Bottom} id="true" colorClass="bg-white" style={{ left: '33%' }} />
+      <CustomHandle type="source" position={Position.Bottom} id="false" colorClass="bg-gray-600" style={{ left: '67%' }} />
 
       <div className="absolute -bottom-6 w-full flex justify-between px-8 text-[9px] font-bold uppercase tracking-wider opacity-60">
-        <span className="text-success">TRUE</span>
-        <span className="text-destructive">FALSE</span>
+        <span className="text-white">TRUE</span>
+        <span className="text-gray-400">FALSE</span>
       </div>
     </div>
   );
@@ -233,21 +233,21 @@ export const ExplainableAINode = memo(({ data, selected }) => {
   const tone = runtimeTone[runtime.status] || runtimeTone.idle;
 
   return (
-    <div className={`relative w-80 bg-card rounded-xl shadow-md border-2 ${selected ? 'shadow-lg ring-2 ring-primary/20' : ''} ${tone.ring} p-0 overflow-hidden text-left transition-all`}>
+    <div className={`relative w-80 bg-[#1A1A1A] rounded-xl shadow-md border border-gray-800 ${selected ? 'shadow-lg ring-1 ring-white/20' : ''} ${tone.ring} p-0 overflow-hidden text-left transition-all`}>
       <RuntimeBadge data={data} />
-      <div className="bg-gradient-to-r from-indigo-500/80 to-indigo-500 p-3 flex items-center gap-3 pr-20">
-        <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center text-white shrink-0 backdrop-blur-sm">
+      <div className="bg-[#111111] border-b border-gray-800 p-3 flex items-center gap-3 pr-20">
+        <div className="w-8 h-8 rounded-lg bg-gray-900 border border-gray-800 flex items-center justify-center text-white shrink-0">
           <Share2 className="w-4 h-4" />
         </div>
         <div className="flex flex-col text-white min-w-0">
-          <span className="text-[10px] font-bold uppercase tracking-wider opacity-80">Interpretability</span>
+          <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Interpretability</span>
           <span className="text-sm font-semibold truncate">{data.label || 'TreeSHAP Explainer'}</span>
         </div>
       </div>
 
-      <div className="p-4 bg-secondary/10">
+      <div className="p-4 bg-[#111111]">
         <div className="flex justify-between items-center mb-3">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block">Feature Impact</span>
+          <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500 block">Feature Impact</span>
         </div>
 
         {data.shapValues && (
@@ -255,14 +255,14 @@ export const ExplainableAINode = memo(({ data, selected }) => {
             {data.shapValues.map((feature, idx) => (
               <div key={idx} className="flex flex-col">
                 <div className="flex justify-between text-[10px] font-semibold mb-1">
-                  <span className="text-muted-foreground">{feature.name}</span>
-                  <span className={feature.impact > 0 ? 'text-destructive' : 'text-success'}>
+                  <span className="text-gray-400">{feature.name}</span>
+                  <span className={feature.impact > 0 ? 'text-gray-400' : 'text-white'}>
                     {feature.impact > 0 ? '+' : ''}{feature.impact.toFixed(2)}
                   </span>
                 </div>
-                <div className="w-full h-1.5 bg-secondary rounded-full overflow-hidden flex">
+                <div className="w-full h-1.5 bg-gray-900 rounded-full overflow-hidden flex border border-gray-800">
                   <div
-                    className={`h-full ${feature.impact > 0 ? 'bg-destructive' : 'bg-success'}`}
+                    className={`h-full ${feature.impact > 0 ? 'bg-gray-400' : 'bg-white'}`}
                     style={{
                       width: `${Math.min(Math.abs(feature.impact) * 20, 100)}%`,
                       marginLeft: feature.impact > 0 ? '50%' : `${50 - Math.min(Math.abs(feature.impact) * 20, 50)}%`,
@@ -275,13 +275,13 @@ export const ExplainableAINode = memo(({ data, selected }) => {
         )}
       </div>
 
-      <div className="p-2.5 border-t border-border bg-card flex justify-between items-center px-4">
-        <span className="text-[10px] text-muted-foreground font-medium">Model: <span className="text-foreground font-semibold">XGBoost</span></span>
-        {runtime.output?.summary && <span className="text-[10px] text-muted-foreground truncate max-w-40">{runtime.output.summary}</span>}
+      <div className="p-2.5 border-t border-gray-800 bg-[#1A1A1A] flex justify-between items-center px-4">
+        <span className="text-[10px] text-gray-500 font-medium">Model: <span className="text-gray-300 font-semibold">XGBoost</span></span>
+        {runtime.output?.summary && <span className="text-[10px] text-gray-500 truncate max-w-40">{runtime.output.summary}</span>}
       </div>
 
-      <CustomHandle type="target" position={Position.Top} colorClass="bg-primary/60" />
-      <CustomHandle type="source" position={Position.Bottom} colorClass="bg-indigo-500" />
+      <CustomHandle type="target" position={Position.Top} colorClass="bg-gray-500" />
+      <CustomHandle type="source" position={Position.Bottom} colorClass="bg-white" />
       <ErrorHandle />
     </div>
   );
@@ -292,30 +292,30 @@ export const MCAFilingSyncNode = memo(({ data, selected }) => {
   const tone = runtimeTone[runtime.status] || runtimeTone.idle;
 
   return (
-    <div className={`relative w-72 bg-card rounded-xl shadow-md border-2 ${selected ? 'ring-2 ring-primary/30 shadow-lg' : ''} ${tone.ring} flex items-stretch overflow-hidden transition-all text-left`}>
+    <div className={`relative w-72 bg-[#1A1A1A] rounded-xl shadow-md border border-gray-800 ${selected ? 'ring-1 ring-white/20 shadow-lg' : ''} ${tone.ring} flex items-stretch overflow-hidden transition-all text-left`}>
       <RuntimeBadge data={data} />
-      <div className="w-1.5 bg-sky-500 opacity-80 shrink-0"></div>
+      <div className="w-1.5 bg-gray-400 shrink-0"></div>
 
       <div className="p-3 flex-1 flex flex-col gap-2 pr-20">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-sky-500/10 border border-sky-500/20 flex items-center justify-center text-sky-500 shrink-0">
+          <div className="w-10 h-10 rounded-lg bg-[#111111] border border-gray-700 flex items-center justify-center text-white shrink-0">
             <Building2 className="w-5 h-5" />
           </div>
           <div className="flex flex-col min-w-0">
-            <span className="text-[10px] text-sky-500 font-bold uppercase tracking-wider truncate">Regulator Sync</span>
-            <span className="text-sm font-semibold text-foreground truncate">{data.label || 'MCA V3 Gateway'}</span>
+            <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider truncate">Regulator Sync</span>
+            <span className="text-sm font-semibold text-white truncate">{data.label || 'MCA V3 Gateway'}</span>
           </div>
         </div>
 
         {data.cinTarget && (
-          <div className="mt-2 bg-secondary/20 rounded-md p-2 text-xs font-mono text-muted-foreground truncate">
+          <div className="mt-2 bg-[#111111] border border-gray-800 rounded-md p-2 text-xs font-mono text-gray-400 truncate">
             Target CIN: {data.cinTarget}
           </div>
         )}
       </div>
 
-      <CustomHandle type="target" position={Position.Top} colorClass="bg-sky-500/50" />
-      <CustomHandle type="source" position={Position.Bottom} colorClass="bg-sky-500" />
+      <CustomHandle type="target" position={Position.Top} colorClass="bg-gray-600" />
+      <CustomHandle type="source" position={Position.Bottom} colorClass="bg-gray-400" />
       <ErrorHandle />
     </div>
   );
@@ -326,30 +326,30 @@ export const EPFOAnomalyNode = memo(({ data, selected }) => {
   const tone = runtimeTone[runtime.status] || runtimeTone.idle;
 
   return (
-    <div className={`relative w-72 bg-card rounded-xl shadow-md border-2 ${selected ? 'ring-2 ring-primary/30 shadow-lg' : ''} ${tone.ring} flex items-stretch overflow-hidden transition-all text-left`}>
+    <div className={`relative w-72 bg-[#1A1A1A] rounded-xl shadow-md border border-gray-800 ${selected ? 'ring-1 ring-white/20 shadow-lg' : ''} ${tone.ring} flex items-stretch overflow-hidden transition-all text-left`}>
       <RuntimeBadge data={data} />
-      <div className="w-1.5 bg-amber-500 opacity-80 shrink-0"></div>
+      <div className="w-1.5 bg-gray-500 shrink-0"></div>
 
       <div className="p-3 flex-1 flex flex-col gap-2 pr-20">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-500 shrink-0">
+          <div className="w-10 h-10 rounded-lg bg-[#111111] border border-gray-700 flex items-center justify-center text-white shrink-0">
             <AlertTriangle className="w-5 h-5" />
           </div>
           <div className="flex flex-col min-w-0">
-            <span className="text-[10px] text-amber-500 font-bold uppercase tracking-wider truncate">Compliance Check</span>
-            <span className="text-sm font-semibold text-foreground truncate">{data.label || 'EPFO Anomalies'}</span>
+            <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider truncate">Compliance Check</span>
+            <span className="text-sm font-semibold text-white truncate">{data.label || 'EPFO Anomalies'}</span>
           </div>
         </div>
 
         {data.employerIdTarget && (
-          <div className="mt-2 bg-secondary/20 rounded-md p-2 text-xs font-mono text-muted-foreground truncate">
+          <div className="mt-2 bg-[#111111] border border-gray-800 rounded-md p-2 text-xs font-mono text-gray-400 truncate">
             EPFO ID: {data.employerIdTarget}
           </div>
         )}
       </div>
 
-      <CustomHandle type="target" position={Position.Top} colorClass="bg-amber-500/50" />
-      <CustomHandle type="source" position={Position.Bottom} colorClass="bg-amber-500" />
+      <CustomHandle type="target" position={Position.Top} colorClass="bg-gray-600" />
+      <CustomHandle type="source" position={Position.Bottom} colorClass="bg-gray-500" />
       <ErrorHandle />
     </div>
   );
@@ -362,4 +362,3 @@ ConditionNode.displayName = 'ConditionNode';
 ExplainableAINode.displayName = 'ExplainableAINode';
 MCAFilingSyncNode.displayName = 'MCAFilingSyncNode';
 EPFOAnomalyNode.displayName = 'EPFOAnomalyNode';
-

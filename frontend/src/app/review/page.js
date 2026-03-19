@@ -14,7 +14,7 @@ import {
 import NextLink from 'next/link';
 import { formatDistanceToNow } from 'date-fns';
 
-const NEXT_PUBLIC_API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+const NEXT_PUBLIC_API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api';
 
 const STATUS_CONFIG = {
     PENDING: {
@@ -53,7 +53,7 @@ export default function ReviewDashboard() {
         setError(null);
         try {
             const token = await user.getIdToken();
-            let url = `${NEXT_PUBLIC_API_URL}/api/v2/approvals?page=1&page_size=50`;
+            let url = `${NEXT_PUBLIC_API_URL}/v2/approvals?page=1&page_size=50`;
             if (statusFilter) {
                 url += `&status_filter=${statusFilter}`;
             }
