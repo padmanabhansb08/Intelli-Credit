@@ -25,6 +25,7 @@ sqlalchemy>=2.0
 cryptography>=43.0
 psycopg[binary]>=3.2
 langchain>=0.2.0
+langchain-openai>=0.1.0
 tavily-python>=0.1.0
 
 firebase-admin>=6.5.0
@@ -38,3 +39,6 @@ networkx
 mem0ai[graph]
 python-docx
 lxml
+simpleeval
+groq
+

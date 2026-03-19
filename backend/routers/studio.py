@@ -12,8 +12,8 @@ from services.event_bus import TERMINAL_EVENT_TYPES, execution_event_broker
 from services.workflow_engine import WorkflowEngine, WorkflowEngineError
 
 try:
-    from database import SessionLocal
-    from db_models import (
+    from async_database import async_session_maker
+    from async_models import (
         DeadLetterExecution,
         ExecutionRun,
         NodeExecutionLog,
@@ -24,7 +24,7 @@ try:
 
     DB_AVAILABLE = True
 except ImportError:
-    SessionLocal = None
+    async_session_maker = None
     WorkflowDefinition = None
     WorkflowNodeDefinition = None
     WorkflowEdgeDefinition = None
@@ -72,13 +72,13 @@ class DecisionGraphPayload(BaseModel):
     initial_input: dict[str, Any] = Field(default_factory=dict)
 
 
-def _model_dump(instance: Any) -> dict[str, Any]:
+async def _model_dump(instance: Any) -> dict[str, Any]:
     if hasattr(instance, "model_dump"):
         return instance.model_dump()
     return instance.dict()
 
 
-def _payload_to_dict(payload: DecisionGraphPayload) -> dict[str, Any]:
+async def _payload_to_dict(payload: DecisionGraphPayload) -> dict[str, Any]:
     return {
         "nodes": [_model_dump(node) for node in payload.nodes],
         "edges": [_model_dump(edge) for edge in payload.edges],
@@ -90,11 +90,11 @@ def _payload_to_dict(payload: DecisionGraphPayload) -> dict[str, Any]:
     }
 
 
-def _utc_now() -> datetime:
+async def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def _compute_duration_ms(started_at: datetime | None, finished_at: datetime | None) -> int | None:
+async def _compute_duration_ms(started_at: datetime | None, finished_at: datetime | None) -> int | None:
     if not started_at or not finished_at:
         return None
     return int((finished_at - started_at).total_seconds() * 1000)
@@ -106,13 +106,13 @@ def _build_initial_input(payload_dict: dict[str, Any]) -> dict[str, Any]:
     return initial_input
 
 
-def _persist_workflow_snapshot(payload_dict: dict[str, Any]) -> None:
+async def _persist_workflow_snapshot(payload_dict: dict[str, Any]) -> None:
     if not DB_AVAILABLE:
         return
 
     workflow_id = payload_dict["workflow_id"]
-    with SessionLocal() as session:
-        workflow = session.get(WorkflowDefinition, workflow_id)
+    async with async_session_maker() as session:
+        workflow = await session.get(WorkflowDefinition, workflow_id)
         if workflow is None:
             workflow = WorkflowDefinition(id=workflow_id)
             session.add(workflow)
@@ -160,15 +160,15 @@ def _persist_workflow_snapshot(payload_dict: dict[str, Any]) -> None:
                 )
             )
 
-        session.commit()
+        await session.commit()
 
 
-def _seed_execution_run(execution_id: str, payload_dict: dict[str, Any], initial_input: dict[str, Any]) -> None:
+async def _seed_execution_run(execution_id: str, payload_dict: dict[str, Any], initial_input: dict[str, Any]) -> None:
     if not DB_AVAILABLE:
         return
 
-    with SessionLocal() as session:
-        execution = session.get(ExecutionRun, execution_id)
+    async with async_session_maker() as session:
+        execution = await session.get(ExecutionRun, execution_id)
         if execution is None:
             execution = ExecutionRun(id=execution_id)
             session.add(execution)
@@ -177,15 +177,15 @@ def _seed_execution_run(execution_id: str, payload_dict: dict[str, Any], initial
         execution.status = "queued"
         execution.initial_payload_json = initial_input
         execution.updated_at = _utc_now()
-        session.commit()
+        await session.commit()
 
 
-def _persist_event(execution_id: str, workflow_id: str, event: dict[str, Any]) -> None:
+async def _persist_event(execution_id: str, workflow_id: str, event: dict[str, Any]) -> None:
     if not DB_AVAILABLE:
         return
 
-    with SessionLocal() as session:
-        execution = session.get(ExecutionRun, execution_id)
+    async with async_session_maker() as session:
+        execution = await session.get(ExecutionRun, execution_id)
         if execution is None:
             execution = ExecutionRun(id=execution_id, workflow_id=workflow_id)
             session.add(execution)
@@ -227,14 +227,14 @@ def _persist_event(execution_id: str, workflow_id: str, event: dict[str, Any]) -
             )
 
         execution.updated_at = _utc_now()
-        session.commit()
+        await session.commit()
 
 
-def _persist_dead_letter(execution_id: str, workflow_id: str, initial_input: dict[str, Any], error_message: str) -> None:
+async def _persist_dead_letter(execution_id: str, workflow_id: str, initial_input: dict[str, Any], error_message: str) -> None:
     if not DB_AVAILABLE:
         return
 
-    with SessionLocal() as session:
+    async with async_session_maker() as session:
         dead_letter = session.query(DeadLetterExecution).filter_by(execution_id=execution_id).one_or_none()
         if dead_letter is None:
             dead_letter = DeadLetterExecution(execution_id=execution_id)
@@ -243,7 +243,7 @@ def _persist_dead_letter(execution_id: str, workflow_id: str, initial_input: dic
         dead_letter.failure_stage = "workflow"
         dead_letter.reason = error_message
         dead_letter.payload_json = initial_input
-        session.commit()
+        await session.commit()
 
 
 async def _emit_and_persist(execution_id: str, workflow_id: str, event: dict[str, Any]) -> None:
@@ -251,7 +251,7 @@ async def _emit_and_persist(execution_id: str, workflow_id: str, event: dict[str
     if DB_AVAILABLE:
         persisted_event = dict(event)
         persisted_event.setdefault("timestamp", _utc_now().isoformat())
-        await asyncio.to_thread(_persist_event, execution_id, workflow_id, persisted_event)
+        await _persist_event(execution_id, workflow_id, persisted_event)
 
 
 async def _run_workflow_execution(execution_id: str, payload_dict: dict[str, Any], initial_input: dict[str, Any]) -> None:
@@ -316,8 +316,8 @@ async def create_execution(payload: DecisionGraphPayload):
     await execution_event_broker.ensure_channel(execution_id)
 
     if DB_AVAILABLE:
-        await asyncio.to_thread(_persist_workflow_snapshot, payload_dict)
-        await asyncio.to_thread(_seed_execution_run, execution_id, payload_dict, initial_input)
+        await _persist_workflow_snapshot(payload_dict)
+        await _seed_execution_run(execution_id, payload_dict, initial_input)
 
     asyncio.create_task(_run_workflow_execution(execution_id, payload_dict, initial_input))
 

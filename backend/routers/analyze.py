@@ -6,6 +6,14 @@ from typing import Any, Dict, List, Optional
 
 import httpx
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Security, UploadFile
+from async_database import get_async_db
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
+from async_models import AnalysisSession
+from async_database import get_async_db
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
+from async_models import AnalysisSession
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
 
@@ -32,7 +40,6 @@ from modules.stress_test import run_stress_test
 from modules.web_research import simulate_web_research
 
 router = APIRouter()
-ANALYSIS_DB: Dict[str, Dict[str, Dict[str, Any]]] = {}
 
 security = HTTPBearer(auto_error=False)
 API_KEYS = {
@@ -78,12 +85,20 @@ async def dispatch_webhook(webhook_url: str, analysis_id: str, decision: str, li
         "approved_limit": limit,
         "timestamp": datetime.utcnow().isoformat(),
     }
-    try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            await client.post(webhook_url, json=payload)
-            logging.info("Webhook dispatched to %s for analysis %s", webhook_url, analysis_id)
-    except Exception as exc:
-        logging.error("Webhook dispatch failed for %s: %s", analysis_id, exc)
+    import asyncio
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                response = await client.post(webhook_url, json=payload)
+                response.raise_for_status()
+                logging.info("Webhook dispatched to %s for analysis %s (Attempt %d)", webhook_url, analysis_id, attempt + 1)
+                return
+        except Exception as exc:
+            logging.error("Webhook dispatch failed for %s on attempt %d: %s", analysis_id, attempt + 1, exc)
+            if attempt < max_retries - 1:
+                await asyncio.sleep(2 ** attempt)
+    logging.error("Final webhook dispatch failure for %s after %d retries", analysis_id, max_retries)
 
 
 class CustomerDetails(BaseModel):
@@ -149,16 +164,25 @@ class AnalyzeRequest(BaseModel):
     remarks: List[str] = []
 
 
-def _ensure_session(tenant_id: str, analysis_id: str, status: str = "INITIATED") -> Dict[str, Any]:
-    tenant_db = ANALYSIS_DB.setdefault(tenant_id, {})
-    session = tenant_db.setdefault(analysis_id, {"raw_extracts": {}, "status": status})
-    session.setdefault("raw_extracts", {})
-    session.setdefault("status", status)
+async def _ensure_session(db: AsyncSession, tenant_id: str, analysis_id: str, status: str = "INITIATED") -> AnalysisSession:
+    stmt = select(AnalysisSession).filter_by(id=analysis_id, tenant_id=tenant_id)
+    result = await db.execute(stmt)
+    session = result.scalar_one_or_none()
+    if not session:
+        session = AnalysisSession(id=analysis_id, tenant_id=tenant_id, status=status, raw_extracts={})
+        db.add(session)
+        await db.commit()
+        await db.refresh(session)
+    else:
+        if status and session.status != status:
+            session.status = status
+            await db.commit()
+            await db.refresh(session)
     return session
 
 
-def _build_financial_payload(req: AnalyzeRequest, session: Dict[str, Any]) -> Dict[str, Any]:
-    uploaded_financials = session.get("raw_extracts", {}).get("financial_pdf", {})
+def _build_financial_payload(req: AnalyzeRequest, session: AnalysisSession) -> Dict[str, Any]:
+    uploaded_financials = session.raw_extracts.get("financial_pdf", {}) if session.raw_extracts else {}
     manual_financials = {
         "revenue": req.financials.operating_income,
         "net_income": req.financials.operating_income * 0.12 if req.financials.operating_income else 0,
@@ -193,15 +217,19 @@ async def upload_document(
     doc_type: str = Form(...),
     analysis_id: Optional[str] = Form(None),
     tenant: Dict = Depends(get_tenant),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """Upload and parse a document, returning a temporary analysis_id."""
     filename = getattr(file, "filename", "") or ""
     if not filename.lower().endswith((".pdf", ".csv")):
         raise HTTPException(status_code=400, detail={"error": "Unsupported file type. Strictly .pdf and .csv are allowed."})
 
-    content = await file.read()
-    if len(content) > 50 * 1024 * 1024:
-        raise HTTPException(status_code=400, detail={"error": "File size exceeds 50MB limit."})
+    content_bytes = bytearray()
+    while chunk := await file.read(1024 * 1024):
+        content_bytes.extend(chunk)
+        if len(content_bytes) > 50 * 1024 * 1024:
+            raise HTTPException(status_code=400, detail={"error": "File size exceeds 50MB limit."})
+    content = bytes(content_bytes)
 
     analysis_id = analysis_id or str(uuid.uuid4())
     tenant_id = tenant["tenant_id"]
@@ -218,9 +246,12 @@ async def upload_document(
     else:
         raise HTTPException(status_code=400, detail="Invalid doc_type")
 
-    session = _ensure_session(tenant_id, analysis_id, status="UPLOADED")
-    session["raw_extracts"][doc_type] = extracted
-    session["status"] = "UPLOADED"
+    session = await _ensure_session(db, tenant_id, analysis_id, status="UPLOADED")
+    raw = dict(session.raw_extracts) if session.raw_extracts else {}
+    raw[doc_type] = extracted
+    session.raw_extracts = raw
+    session.status = "UPLOADED"
+    await db.commit()
 
     return {
         "status": "success",
@@ -237,6 +268,7 @@ async def run_full_analysis(
     req: AnalyzeRequest,
     background_tasks: BackgroundTasks,
     tenant: Dict = Depends(get_tenant),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """Run the complete end-to-end credit decisioning pipeline."""
     try:
@@ -245,11 +277,11 @@ async def run_full_analysis(
         print(f"Warning: models not available for eager load. Falling back at runtime. {exc}")
 
     tenant_id = tenant["tenant_id"]
-    session = _ensure_session(tenant_id, req.analysis_id, status="INITIATED_VIA_LOS")
+    session = await _ensure_session(db, tenant_id, req.analysis_id, status="INITIATED_VIA_LOS")
 
     financials = _build_financial_payload(req, session)
-    bank_data = session.get("raw_extracts", {}).get("bank_csv", {})
-    bureau_data = session.get("raw_extracts", {}).get("bureau_json", {"bureau_score": req.financials.bureau_score})
+    bank_data = session.raw_extracts.get("bank_csv", {}) if session.raw_extracts else {}
+    bureau_data = session.raw_extracts.get("bureau_json", {"bureau_score": req.financials.bureau_score}) if session.raw_extracts else {"bureau_score": req.financials.bureau_score}
     total_collateral_value = sum(float(item.get("value", 0) or 0) for item in req.collateral_list)
 
     features = compute_financial_ratios(
@@ -318,11 +350,8 @@ async def run_full_analysis(
         shap_explanation = get_shap_explanation(features)
         model_metrics = get_model_metrics()
     except Exception as exc:
-        print(f"ML inference fallback engaged: {exc}")
-        pd_score = 0.15
-        recommended_limit = req.facility.amount * 0.8
-        shap_explanation = {"top_5_factors": []}
-        model_metrics = {}
+        logging.error(f"ML inference engine error: {exc}")
+        raise HTTPException(status_code=500, detail="ML inference engine error")
 
     primary_insight_bps = web_research_data.get("primary_insights", {}).get("impact_bps", 0)
     risk_premium = compute_risk_premium(
@@ -390,8 +419,9 @@ async def run_full_analysis(
         "workflow_state": _dump_model(req.approval),
     }
 
-    session["full_result"] = full_result
-    session["status"] = "COMPLETED"
+    session.full_result = full_result
+    session.status = "COMPLETED"
+    await db.commit()
 
     save_full_analysis(req.analysis_id, full_result)
 
@@ -420,36 +450,37 @@ async def get_system_metrics():
 
 
 @router.post("/drafts/save")
-async def save_los_draft(req: AnalyzeRequest, tenant: Dict = Depends(get_tenant)):
+async def save_los_draft(req: AnalyzeRequest, tenant: Dict = Depends(get_tenant), db: AsyncSession = Depends(get_async_db)):
     """Save an in-progress Credit Proposal Draft to the tenant datastore."""
-    session = _ensure_session(tenant["tenant_id"], req.analysis_id, status="DRAFT")
-    session["draft_payload"] = _dump_model(req)
-    session["status"] = "DRAFT"
+    session = await _ensure_session(db, tenant["tenant_id"], req.analysis_id, status="DRAFT")
+    session.draft_payload = _dump_model(req)
+    session.status = "DRAFT"
+    await db.commit()
     return {"status": "success", "message": "Draft saved securely.", "analysis_id": req.analysis_id}
 
 
 @router.get("/drafts/load/{analysis_id}")
-async def load_los_draft(analysis_id: str, tenant: Dict = Depends(get_tenant)):
+async def load_los_draft(analysis_id: str, tenant: Dict = Depends(get_tenant), db: AsyncSession = Depends(get_async_db)):
     """Load an in-progress Credit Proposal Draft."""
-    session = ANALYSIS_DB.get(tenant["tenant_id"], {}).get(analysis_id)
-    if not session or "draft_payload" not in session:
+    result = await db.execute(select(AnalysisSession).filter_by(id=analysis_id, tenant_id=tenant["tenant_id"]))
+    session = result.scalar_one_or_none()
+    if not session or not session.draft_payload:
         raise HTTPException(status_code=404, detail="Draft not found")
-    return {"status": "success", "draft": session["draft_payload"]}
+    return {"status": "success", "draft": session.draft_payload}
 
 
 @router.get("/drafts/all")
-async def get_all_drafts(tenant: Dict = Depends(get_tenant)):
+async def get_all_drafts(tenant: Dict = Depends(get_tenant), db: AsyncSession = Depends(get_async_db)):
     """Return all drafts for the specific tenant."""
+    result = await db.execute(select(AnalysisSession).filter_by(tenant_id=tenant["tenant_id"], status="DRAFT"))
+    sessions = result.scalars().all()
     drafts_list = []
-    for analysis_id, session_data in ANALYSIS_DB.get(tenant["tenant_id"], {}).items():
-        if session_data.get("status") == "DRAFT":
-            draft_payload = session_data.get("draft_payload", {})
-            drafts_list.append(
-                {
-                    "analysis_id": analysis_id,
-                    "company_name": draft_payload.get("customer", {}).get("name", "Unnamed Draft"),
-                    "status": "DRAFT",
-                    "limit_recommendation": draft_payload.get("facility", {}).get("amount", 0),
-                }
-            )
+    for s in sessions:
+        draft_payload = s.draft_payload or {}
+        drafts_list.append({
+            "analysis_id": s.id,
+            "company_name": draft_payload.get("customer", {}).get("name", "Unnamed Draft"),
+            "status": "DRAFT",
+            "limit_recommendation": draft_payload.get("facility", {}).get("amount", 0),
+        })
     return {"drafts": drafts_list}

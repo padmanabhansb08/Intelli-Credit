@@ -3,6 +3,9 @@ print("BACKEND: Starting main.py...")
 from unittest.mock import MagicMock
 print("BACKEND: MagicMock imported")
 
+from security.auth import verify_firebase_token
+from core.config import settings
+
 # Simple Global Mocks for missing heavy dependencies to unblock server startup
 MOCK_LIST = [
     "numpy", "pandas", "pdf2image", "pdfplumber", "pytesseract", "scipy", "scipy.stats", 
@@ -35,21 +38,22 @@ print("BACKEND: CORSMiddleware imported")
 import uvicorn
 print("BACKEND: uvicorn imported")
 
+app = FastAPI(
+    title=settings.PROJECT_NAME if hasattr(settings, 'PROJECT_NAME') else "AI Credit Decisioning Engine API",
+    description="Backend API for automated credit analysis and workflow execution.",
+    version=settings.VERSION if hasattr(settings, 'VERSION') else "1.0.0"
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.ALLOWED_ORIGINS if hasattr(settings, 'ALLOWED_ORIGINS') else ["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # --- Individual Router Imports ---
-try:
-    print("BACKEND: Importing database...")
-    import database
-    print("BACKEND: database imported")
-except Exception as e:
-    print(f"WARNING: database import failed: {e}")
-
-try:
-    import db_models
-    print("BACKEND: db_models imported")
-except Exception as e:
-    print(f"WARNING: db_models import failed: {e}")
-
-def load_router(mod_path, alias=None):
+def load_router(mod_path):
     try:
         print(f"BACKEND: Importing {mod_path}...")
         mod = importlib.import_module(mod_path)
@@ -66,36 +70,42 @@ analyze_router = load_router("routers.analyze")
 cam_router = load_router("routers.cam")
 portfolio_router = load_router("routers.portfolio")
 research_router = load_router("routers.research")
-
-# MiroFish simulation router
 simulation_router = load_router("routers.simulation")
 
-app = FastAPI(title="AI Credit Decisioning Engine API (Rescue Mode)")
+# Idempotency middleware — caches POST responses by Idempotency-Key header
+try:
+    from middleware.idempotency import IdempotencyMiddleware
+    app.add_middleware(IdempotencyMiddleware)
+except ImportError:
+    pass  # graceful fallback if cachetools not installed
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# V1/Standard Routers
+if analyze_router: app.include_router(analyze_router.router, prefix="/api", tags=["Analysis Engine"])
+if cam_router: app.include_router(cam_router.router, prefix="/api/cam", tags=["CAM Generation"])
+if applications: app.include_router(applications.router, prefix="/api", tags=["Applications"])
+if research_router: app.include_router(research_router.router, prefix="/api/research", tags=["Web Research"])
+if portfolio_router: app.include_router(portfolio_router.router, prefix="/api/portfolio", tags=["Portfolio Management"])
+if simulation_router: app.include_router(simulation_router.router, tags=["MiroFish Simulation"])
 
-if approvals_router:
-    app.include_router(approvals_router.router, prefix="/api/v2", tags=["Policy Approvals"])
-if decision_studio_core:
-    app.include_router(decision_studio_core.router, prefix="/api/decision-studio", tags=["Decision Studio"])
-if applications:
-    app.include_router(applications.router, prefix="/api", tags=["Applications"])
-if analyze_router:
-    app.include_router(analyze_router.router, prefix="/api", tags=["Analysis Engine"])
-if cam_router:
-    app.include_router(cam_router.router, prefix="/api/cam", tags=["CAM Generation"])
-if portfolio_router:
-    app.include_router(portfolio_router.router, prefix="/api/portfolio", tags=["Portfolio Management"])
-if research_router:
-    app.include_router(research_router.router, prefix="/api/research", tags=["Web Research"])
-if simulation_router:
-    app.include_router(simulation_router.router, tags=["MiroFish Simulation"])
+# V2/Decision Studio Routers
+if approvals_router: app.include_router(approvals_router.router, prefix="/api/v2", tags=["Policy Approvals"])
+if decision_studio_core: app.include_router(decision_studio_core.router, prefix="/api/decision-studio", tags=["Decision Studio"])
+
+from async_database import async_engine
+from async_models import AsyncBase
+
+@app.on_event("startup")
+async def startup_event():
+    import os
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    for d in ["data/raw", "data/curated", "data/features", "models"]:
+        os.makedirs(os.path.join(base_dir, d), exist_ok=True)
+    try:
+        async with async_engine.begin() as conn:
+            await conn.run_sync(AsyncBase.metadata.create_all)
+    except Exception as e:
+        print(f"WARNING: Async DB initialization failed: {e}")
+
 
 @app.get("/health")
 def health():
