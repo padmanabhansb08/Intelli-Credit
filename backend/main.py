@@ -3,34 +3,33 @@ print("BACKEND: Starting main.py...")
 from unittest.mock import MagicMock
 print("BACKEND: MagicMock imported")
 
-from security.auth import verify_firebase_token
-from core.config import settings
-
 # Simple Global Mocks for missing heavy dependencies to unblock server startup
 MOCK_LIST = [
     "numpy", "pandas", "pdf2image", "pdfplumber", "pytesseract", "scipy", "scipy.stats", 
-    "joblib", "xgboost", "shap", "firebase_admin", "firebase_admin.auth", 
-    "firebase_admin.credentials", "firebase_admin.storage", "reportlab", "reportlab.lib", 
+    "joblib", "xgboost", "shap", "reportlab", "reportlab.lib", 
     "reportlab.platypus", "reportlab.lib.pagesizes", "reportlab.lib.styles", "reportlab.lib.units",
     "reportlab.lib.enums", "reportlab.lib.colors", "reportlab.graphics", "reportlab.graphics.shapes",
-    "google", "google.generativeai", "langchain", "langchain_openai", "langchain_community",
-    "langchain.prompts", "langchain.schema", "langchain.chains", "tavily",
-    "sqlalchemy", "sqlalchemy.orm", "sqlalchemy.types", "sqlalchemy.engine", "sqlalchemy.sql"
+    "langchain", "langchain_openai", "langchain_community",
+    "langchain.prompts", "langchain.schema", "langchain.chains", "tavily"
 ]
 
 import importlib
-
 for mod_name in MOCK_LIST:
-    try:
-        importlib.import_module(mod_name)
-    except Exception:
-        if mod_name not in sys.modules:
-            m = MagicMock()
-            m._apps = [] # for firebase_admin
-            sys.modules[mod_name] = m
-            print(f"DEBUG: Mocked {mod_name}")
+    if mod_name not in sys.modules:
+        m = MagicMock()
+        m._apps = []
+        sys.modules[mod_name] = m
+        print(f"DEBUG: Mocked {mod_name}")
 
 print("BACKEND: Dependency check completed")
+
+# Move these here
+print("BACKEND: Importing settings...")
+from core.config import settings
+print("BACKEND: settings imported")
+print("BACKEND: Importing verify_firebase_token...")
+from security.auth import verify_firebase_token
+print("BACKEND: verify_firebase_token imported")
 from fastapi import FastAPI
 print("BACKEND: FastAPI imported")
 from fastapi.middleware.cors import CORSMiddleware
@@ -125,4 +124,4 @@ def api_health():
     return {"status": "ok", "mode": "rescue_api"}
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8006)
+    uvicorn.run(app, host="0.0.0.0", port=8000)

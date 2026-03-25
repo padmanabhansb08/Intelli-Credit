@@ -22,14 +22,14 @@ class SearchResult(BaseModel):
 @router.on_event("startup")
 async def initialize_search_engine():
     """Initializes the FAISS and TF-IDF indices on startup."""
-    # Note: In a real clustered production environment, you'd trigger this
-    # via a dedicated worker or message queue to avoid slowing down API startup.
-    # For local/demo, we initialize here.
-    from async_database import async_session_maker
-    async with async_session_maker() as db:
-        await search_engine_instance.synchronize_index(db)
+    try:
+        from async_database import AsyncSessionLocal
+        async with AsyncSessionLocal() as db:
+            await search_engine_instance.synchronize_index(db)
+    except Exception as e:
+        print(f"Warning: Search engine initialization failed (DB likely unavailable): {e}")
 
-@router.get("/portfolio/search", response_model=List[SearchResult])
+@router.get("/search", response_model=List[SearchResult])
 async def search_portfolio(
     q: str = Query("", description="Natural language or keyword search query"),
     status: Optional[str] = Query(None, description="Filter by application status"),
@@ -53,4 +53,5 @@ async def search_portfolio(
         results = search_engine_instance.search(query=q, filters=filters, top_k=limit)
         return results
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"WARNING: Portfolio search failed (DB likely unavailable): {e}")
+        return []

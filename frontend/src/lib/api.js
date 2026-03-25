@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { DOCUMENT_KIND_CONFIG } from '@/lib/ingestion';
 
-export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8006/api';
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api';
 export const STUDIO_API_BASE_URL = `${API_BASE_URL}/decision-studio`;
 
 const api = axios.create({

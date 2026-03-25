@@ -13,7 +13,7 @@ export const metadata = {
 export default function RootLayout({ children }) {
   return (
     <html lang="en" className="dark" suppressHydrationWarning>
-      <body className={`${inter.className} min-h-screen bg-background text-foreground antialiased selection:bg-primary/30 overflow-hidden`}>
+      <body suppressHydrationWarning className={`${inter.className} min-h-screen bg-background text-foreground antialiased selection:bg-primary/30 overflow-hidden`}>
         {/* Glow Effects */}
         <div className="fixed inset-0 overflow-hidden pointer-events-none z-0">
           <div className="absolute -top-[20%] -left-[10%] w-[50%] h-[50%] rounded-full bg-primary/10 blur-[120px]" />

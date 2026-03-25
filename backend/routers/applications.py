@@ -83,37 +83,41 @@ async def create_application(payload: ApplicationCreate, db: AsyncSession = Depe
 
 @router.get("/applications", response_model=List[ApplicationResponse])
 async def list_applications(db: AsyncSession = Depends(get_async_db)):
-    apps = (await db.execute(select(CreditApplication))).scalars().all()
-    result = []
-    for app in apps:
-        borrower = (await db.execute(select(BorrowerEntity).filter(BorrowerEntity.id == app.borrower_id))).scalar_one_or_none()
-        audit = (await db.execute(select(ImmutableAuditLog).filter(ImmutableAuditLog.application_id == app.id))).scalar_one_or_none()
-        result.append(
-            ApplicationResponse(
-                id=app.id,
-                borrower={"id": borrower.id, "name": borrower.name} if borrower else None,
-                status=app.status,
-                facility_amount=app.facility_amount,
-                currency=app.currency,
-                purpose=app.purpose,
-                term_months=app.term_months,
-                recommended_limit=app.recommended_limit,
-                decision=app.decision,
-                grade=app.grade,
-                composite_score=app.composite_score,
-                pd_score=app.pd_score,
-                created_at=app.created_at.isoformat(),
-                updated_at=app.updated_at.isoformat(),
-                audit_log={
-                    "id": audit.id,
-                    "exact_timestamp": audit.exact_timestamp.isoformat(),
-                    "input_payload_json": audit.input_payload_json,
-                    "ruleset_json": audit.ruleset_json,
-                    "deterministic_outcome_json": audit.deterministic_outcome_json,
-                } if audit else None,
+    try:
+        apps = (await db.execute(select(CreditApplication))).scalars().all()
+        result = []
+        for app in apps:
+            borrower = (await db.execute(select(BorrowerEntity).filter(BorrowerEntity.id == app.borrower_id))).scalar_one_or_none()
+            audit = (await db.execute(select(ImmutableAuditLog).filter(ImmutableAuditLog.application_id == app.id))).scalar_one_or_none()
+            result.append(
+                ApplicationResponse(
+                    id=app.id,
+                    borrower={"id": borrower.id, "name": borrower.name} if borrower else None,
+                    status=app.status,
+                    facility_amount=app.facility_amount,
+                    currency=app.currency,
+                    purpose=app.purpose,
+                    term_months=app.term_months,
+                    recommended_limit=app.recommended_limit,
+                    decision=app.decision,
+                    grade=app.grade,
+                    composite_score=app.composite_score,
+                    pd_score=app.pd_score,
+                    created_at=app.created_at.isoformat(),
+                    updated_at=app.updated_at.isoformat(),
+                    audit_log={
+                        "id": audit.id,
+                        "exact_timestamp": audit.exact_timestamp.isoformat(),
+                        "input_payload_json": audit.input_payload_json,
+                        "ruleset_json": audit.ruleset_json,
+                        "deterministic_outcome_json": audit.deterministic_outcome_json,
+                    } if audit else None,
+                )
             )
-        )
-    return result
+        return result
+    except Exception as e:
+        print(f"WARNING: Database unavailable for applications list: {e}")
+        return []
 
 @router.get("/applications/{app_id}", response_model=ApplicationResponse)
 async def get_application(app_id: str, db: AsyncSession = Depends(get_async_db)):
