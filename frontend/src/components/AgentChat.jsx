@@ -15,7 +15,7 @@ export default function AgentChat({
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef(null);
 
-  const baseUrl = apiUrl || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8006/api';
+  const baseUrl = apiUrl || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8010/api';
 
   // Auto-scroll to bottom
   useEffect(() => {

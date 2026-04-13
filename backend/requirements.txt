@@ -29,16 +29,15 @@ langchain-openai>=0.1.0
 tavily-python>=0.1.0
 
 firebase-admin>=6.5.0
-sentence-transformers>=2.7.0
-faiss-cpu>=1.8.0
+sentence-transformers==3.0.0
+faiss-cpu==1.8.0
 cachetools>=5.3.3
 asyncpg>=0.29.0
 alembic>=1.13.0
-camel-ai[all]
+camel-ai==0.2.64
 networkx
 mem0ai[graph]
 python-docx
 lxml
 simpleeval
 groq
-

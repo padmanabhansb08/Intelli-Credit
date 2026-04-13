@@ -10,8 +10,11 @@ RUN apt-get update && apt-get install -y \
     libxml2-dev \
     libxslt-dev \
     tesseract-ocr \
-    libgl1-mesa-glx \
+    libgl1 \
+    libglib2.0-0 \
     poppler-utils \
+    python3-dev \
+    libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies

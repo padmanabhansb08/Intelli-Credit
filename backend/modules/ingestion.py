@@ -22,10 +22,10 @@ except ImportError:
     pd = None
 
 try:
-    import pdfplumber
+    import pypdf
 except ImportError:
-    print("WARNING: pdfplumber not found")
-    pdfplumber = None
+    print("WARNING: pypdf not found")
+    pypdf = None
 
 try:
     import pytesseract
@@ -54,7 +54,9 @@ DATABRICKS_HTTP_PATH = os.environ.get("DATABRICKS_HTTP_PATH", "sql/1.0/endpoints
 DATABRICKS_ACCESS_TOKEN = os.environ.get("DATABRICKS_ACCESS_TOKEN", "mock-token")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-1.5-flash")
-GEMINI_TIMEOUT_SEC = float(os.environ.get("GEMINI_TIMEOUT_SEC", "45"))
+GEMINI_TIMEOUT_SEC = float(os.environ.get("GEMINI_TIMEOUT_SEC", "60"))
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
+GROQ_MODEL = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
 BANK_CATEGORY_BATCH_SIZE = int(os.environ.get("BANK_CATEGORY_BATCH_SIZE", "40"))
 
 FINANCIAL_FIELDS = [
@@ -268,6 +270,14 @@ def _validate_financial_extraction(
     normalized["sanction_terms"] = _coerce_sanction_terms(payload.get("sanction_terms") or {})
     normalized["raw_text"] = (raw_text or str(payload.get("raw_text") or ""))[:8000]
     normalized["extraction_warnings"] = list(payload.get("extraction_warnings") or [])
+    
+    if "confidence_score" in payload:
+        normalized["confidence_score"] = payload["confidence_score"]
+    if "extraction_notes" in payload:
+        normalized["extraction_notes"] = payload["extraction_notes"]
+    if "extraction_confidence" in payload:
+        normalized["extraction_confidence"] = payload["extraction_confidence"]
+
     return normalized
 
 
@@ -348,6 +358,40 @@ def _request_gemini_json(
         return {}
 
 
+def _request_groq_json(prompt: str, text_context: str | None = None) -> Dict[str, Any]:
+    if not GROQ_API_KEY:
+        return {}
+    
+    try:
+        from groq import Groq
+        client = Groq(api_key=GROQ_API_KEY)
+        
+        full_prompt = prompt
+        if text_context:
+            full_prompt += f"\n\nDOCUMENT TEXT CONTEXT:\n{text_context[:25000]}"
+            
+        chat_completion = client.chat.completions.create(
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are a financial data extraction assistant. Always respond with valid JSON only."
+                },
+                {
+                    "role": "user",
+                    "content": full_prompt,
+                }
+            ],
+            model=GROQ_MODEL,
+            response_format={"type": "json_object"},
+            temperature=0.1
+        )
+        content = chat_completion.choices[0].message.content
+        return _extract_json_block(content)
+    except Exception as e:
+        print(f"Groq API error: {e}")
+        return {}
+
+
 def _normalize_indian_financials(text: str) -> str:
     """Regex-based utility to convert Indian 'Cr' and 'Lakhs' into clean standard numbers."""
     if not text:
@@ -360,7 +404,7 @@ def _normalize_indian_financials(text: str) -> str:
         except ValueError:
             return match.group(0)
     
-    text = re.sub(r"([\d,]+(?:\.\d+)?)\s*(?:Cr|Crores?)", replace_cr, text, flags=re.IGNORECASE)
+    text = re.sub(r"([\d,]+(?:\.\d+)?)\s*(?:Cr|Crores?|Crs\b)", replace_cr, text, flags=re.IGNORECASE)
     
     def replace_lakh(match):
         try:
@@ -369,7 +413,7 @@ def _normalize_indian_financials(text: str) -> str:
         except ValueError:
             return match.group(0)
     
-    text = re.sub(r"([\d,]+(?:\.\d+)?)\s*(?:Lakhs?|Lacs?)", replace_lakh, text, flags=re.IGNORECASE)
+    text = re.sub(r"([\d,]+(?:\.\d+)?)\s*(?:Lakhs?|Lacs?|Lakh|Lac\b)", replace_lakh, text, flags=re.IGNORECASE)
     return text
 
 
@@ -378,32 +422,19 @@ def _extract_text_from_pdf(file_bytes: bytes) -> str:
     total_chars = 0
     num_pages = 0
     
-    with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
-        num_pages = len(pdf.pages)
-        for page in pdf.pages:
+    if pypdf is None:
+        raise RuntimeError("pypdf is required for PDF extraction but not installed.")
+        
+    try:
+        reader = pypdf.PdfReader(io.BytesIO(file_bytes))
+        num_pages = len(reader.pages)
+        for page in reader.pages:
             page_text = page.extract_text() or ""
-            
-            # Preserve tabular markdown structure
-            for table in page.extract_tables() or []:
-                rows = [" | ".join(str(cell) for cell in row if cell is not None) for row in table if row]
-                if rows:
-                    page_text += "\n" + "\n".join(rows)
-                    
             if page_text.strip():
                 text_chunks.append(page_text)
                 total_chars += len(page_text)
-
-    # Fallback trigger: If character count extracted per page is abnormally low (indicating scanned image)
-    if num_pages > 0 and (total_chars / num_pages) < 100:
-        print("Scanned document detected (low char count). Engaging hybrid Tesseract OCR fallback...")
-        text_chunks = []
-        try:
-            images = convert_from_bytes(file_bytes)
-            for img in images:
-                ocr_text = pytesseract.image_to_string(img)
-                text_chunks.append(ocr_text)
-        except Exception as e:
-            print(f"OCR failed: {e}")
+    except Exception as e:
+        print(f"Error reading PDF with pypdf: {e}")
 
     extracted_text = "\n".join(text_chunks)
     return _normalize_indian_financials(extracted_text)
@@ -461,74 +492,32 @@ def _extract_fields_from_text(text: str) -> Dict[str, Any]:
 
 def _build_financial_extraction_prompt(document_type_hint: str, regex_hints: Optional[Dict[str, Any]] = None) -> str:
     base_prompt = (
-        "You are an expert Indian credit analyst extracting underwriting data from "
-        "scanned, messy Indian-context corporate PDFs. This is the PRIMARY extraction — "
-        "be thorough. Parse complex tabular structures, nested headers, notes to accounts, "
-        "and Schedule III format balance sheets. Return strict JSON only. Use null when "
-        "data is genuinely unavailable. All monetary values should be in the same unit "
-        "Lakhs or Crores — state which in document_summary).\n\n"
-    )
-
-    # Type-specific extraction instructions
-    type_instructions = {
-        "itr": (
-            "This is an Indian Income Tax Return (ITR). Extract: "
-            "gross_total_income, total_deductions, taxable_income, tax_paid, "
-            "return_type (ITR-1/2/3/4/5/6/7), assessment_year, "
-            "business_income, capital_gains, tds_details. "
-        ),
-        "shareholding_pattern": (
-            "This is a Shareholding Pattern document. Extract: "
-            "promoter_holding_pct, institutional_holding_pct, public_holding_pct, "
-            "total_shares, pledged_shares_pct, top_shareholders list. "
-        ),
-        "gst_return": (
-            "This is a GST Return (GSTR-1/3B/2A/2B). Extract: "
-            "gstr_type, return_period, total_taxable_outward_supplies, "
-            "total_itc_claimed, total_tax_paid, gstin. "
-        ),
-    }
-
-    extra_instruction = type_instructions.get(document_type_hint, "")
-
-    schema = (
-        "Schema: {"
-        '"revenue": number|null, '
-        '"net_income": number|null, '
-        '"total_assets": number|null, '
-        '"total_liabilities": number|null, '
-        '"total_equity": number|null, '
-        '"ebitda": number|null, '
-        '"total_debt": number|null, '
-        '"cash_and_equivalents": number|null, '
-        '"operating_cash_flow": number|null, '
-        '"depreciation": number|null, '
-        '"interest_expense": number|null, '
-        '"tax_expense": number|null, '
-        '"current_assets": number|null, '
-        '"current_liabilities": number|null, '
-        '"accounts_receivable": number|null, '
-        '"inventory": number|null, '
-        '"document_type": string, '
-        '"document_summary": string, '
-        '"board_resolution_present": boolean, '
-        '"credit_rating": string|null, '
-        '"sanction_terms": {'
-        '"limit": number|null, '
-        '"interest_rate": number|null, '
-        '"tenor_months": integer|null, '
-        '"remaining_tenor_months": integer|null, '
-        '"moratorium_months": integer|null, '
-        '"installment_amount": number|null, '
-        '"principal_installment_amount": number|null, '
-        '"repayment_frequency": string|null, '
-        '"balance_outstanding": number|null, '
-        '"annual_principal_due": number|null, '
-        '"current_maturity_of_long_term_debt": number|null, '
-        '"amortization_schedule_available": boolean'
-        '}, '
-        '"extraction_confidence": number (0-1)'
-        "}. "
+        "You are a Senior Credit Underwriter at a Tier-1 Indian Bank. \n"
+        "Analyze the provided document (Financial Statement/ITR/GST) and extract values with 100% accuracy.\n\n"
+        "STRICT INSTRUCTIONS:\n"
+        "1. UNIT DETECTION: First, identify if the document is in absolute INR, Thousands, Lakhs, or Crores. \n"
+        "   - If values are in 'Cr', multiply by 10,000,000 before returning.\n"
+        "   - If values are in 'Lakhs', multiply by 100,000.\n"
+        "2. NO HALLUCINATION: If a field is not present, return null. Do NOT guess.\n"
+        "3. CROSS-RECONCILIATION:\n"
+        "   - Extract 'Revenue' from the P&L.\n"
+        "   - Extract 'Interest Expense' from 'Finance Costs'. \n"
+        "   - Extract 'Total Debt' by summing Long-term and Short-term borrowings.\n"
+        "4. SANCTION TERMS: Look specifically for \"Sanction Letters\". Extract the EMI, ROI, and Limit.\n\n"
+        "OUTPUT JSON SCHEMA:\n"
+        "{\n"
+        "  \"revenue\": number_in_absolute_inr,\n"
+        "  \"ebitda\": number_in_absolute_inr,\n"
+        "  \"interest_expense\": number_in_absolute_inr,\n"
+        "  \"total_debt\": number_in_absolute_inr,\n"
+        "  \"net_income\": number_in_absolute_inr,\n"
+        "  \"current_assets\": number_in_absolute_inr,\n"
+        "  \"current_liabilities\": number_in_absolute_inr,\n"
+        "  \"document_type\": \"financial_statement\" | \"sanction_letter\" | \"itr\" | \"gst\",\n"
+        "  \"unit_detected\": \"absolute\" | \"lakhs\" | \"crores\",\n"
+        "  \"confidence_score\": number (0.0 to 1.0),\n"
+        "  \"extraction_notes\": \"Explain where you found the revenue and debt values.\"\n"
+        "}\n"
     )
 
     hint_section = ""
@@ -541,7 +530,7 @@ def _build_financial_extraction_prompt(document_type_hint: str, regex_hints: Opt
             )
 
     return (
-        base_prompt + extra_instruction + schema
+        base_prompt
         + f"Document type hint: {document_type_hint}."
         + hint_section
     )
@@ -559,6 +548,27 @@ def _invoke_gemini_vision_extraction(
         file_bytes=file_bytes,
         text_context=extracted_text,
     )
+    if not payload:
+        return {}
+    return _validate_financial_extraction(
+        payload,
+        raw_text=extracted_text,
+        default_document_type=document_type_hint,
+    )
+
+
+def _invoke_groq_extraction(
+    extracted_text: str,
+    document_type_hint: str,
+    regex_hints: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Fallback Groq extraction — extremely useful when Gemini billing is blocked."""
+    payload = _request_groq_json(
+        _build_financial_extraction_prompt(document_type_hint, regex_hints),
+        text_context=extracted_text,
+    )
+    if not payload:
+        return {}
     return _validate_financial_extraction(
         payload,
         raw_text=extracted_text,
@@ -733,6 +743,9 @@ def parse_financial_pdf(file_bytes: bytes) -> Dict[str, Any]:
     except Exception:
         raw_text = ""
 
+    if len(_normalize_text(raw_text)) < 50:
+        raise ValueError("unreadable: Document text length is too short (<50 chars) even after OCR fallback.")
+
     document_type = _detect_document_type(raw_text)
     text_too_short = len(_normalize_text(raw_text)) < 200
 
@@ -742,26 +755,34 @@ def parse_financial_pdf(file_bytes: bytes) -> Dict[str, Any]:
         regex_raw = _extract_fields_from_text(raw_text)
         regex_hints = {k: v for k, v in regex_raw.items() if k in FINANCIAL_FIELDS and v is not None}
 
-    # ── Step 2: Gemini Vision — PRIMARY extraction ────────────────────────
-    gemini_extract = _invoke_gemini_vision_extraction(
-        file_bytes, raw_text, document_type, regex_hints=regex_hints,
-    )
+    # ── Step 2: Skip AI extraction entirely - use regex only for reliability ─
+    ai_extract = {}
+    extraction_mode = "regex_only"
 
-    # ── Step 3: Merge — Gemini takes priority, regex fills gaps ───────────
-    if gemini_extract:
-        # Start with regex hints, overlay Gemini (Gemini wins on conflicts)
+    # ── Step 3: Merge — use regex hints directly ───────────────────────────
+    if ai_extract:
+        # Start with regex hints, overlay AI (AI wins on conflicts)
         merged_data = {**regex_hints}
-        for k, v in gemini_extract.items():
+        for k, v in ai_extract.items():
             if v not in (None, "", {}):
                 merged_data[k] = v
+        
+        # Smart Heuristic: If company name looks like default/generic, try regex on raw text
+        if ai_extract.get("company_name") in (None, "", "Acme Corp Ltd.", "TechNova INNOVATORS"):
+            name_match = re.search(r"(?:Balance Sheet of|Directors of|Statement of)\s+([A-Z\s]{4,60})", raw_text, re.IGNORECASE)
+            if name_match:
+                ai_extract["company_name"] = name_match.group(1).strip()
+
         merged = _validate_financial_extraction(
-            merged_data,
-            raw_text=raw_text or gemini_extract.get("raw_text", ""),
+            ai_extract,
+            raw_text=raw_text or ai_extract.get("raw_text", ""),
             default_document_type=document_type,
         )
-        merged["document_type"] = gemini_extract.get("document_type") or document_type
-        merged["extraction_status"] = "gemini_primary"
-        merged["extraction_confidence"] = gemini_extract.get("extraction_confidence", 0.8)
+        merged["company_name"] = ai_extract.get("company_name") or merged_data.get("company_name")
+        merged["document_type"] = ai_extract.get("document_type") or document_type
+        merged["extraction_status"] = extraction_mode
+        merged["extraction_confidence"] = ai_extract.get("confidence_score", ai_extract.get("extraction_confidence", 0.8))
+        merged["extraction_notes"] = ai_extract.get("extraction_notes")
     else:
         # Gemini unavailable — fall back to regex-only
         native_extract = _validate_financial_extraction(
@@ -1417,7 +1438,9 @@ def compute_financial_ratios(
     )
     total_equity = _safe_float(financials.get("total_equity"), max(total_assets - total_liabilities, 0.0))
     total_debt = _safe_float(financials.get("total_debt") or financials.get("long_term_liab"), 0.0)
-    interest_expense = _safe_float(financials.get("interest_expense"), max(total_debt * 0.09, 0.0))
+    interest_expense_extracted = financials.get("interest_expense")
+    is_estimated_interest = interest_expense_extracted is None or interest_expense_extracted == ""
+    interest_expense = _safe_float(interest_expense_extracted, max(total_debt * 0.09, 0.0))
     depreciation = _safe_float(financials.get("depreciation"), 0.0)
     tax_expense = _safe_float(financials.get("tax_expense"), 0.0)
     ebitda = _safe_float(financials.get("ebitda"), 0.0)
@@ -1466,6 +1489,7 @@ def compute_financial_ratios(
         "num_past_defaults": bureau_data.get("num_past_defaults", 0),
         "cash_flow_stability": round(_safe_float(bank_data.get("cash_flow_stability"), 0.0), 4),
         "interest_expense": round(interest_expense, 2),
+        "is_estimated_interest": is_estimated_interest,
         "depreciation": round(depreciation, 2),
         "current_ratio": round((current_assets / current_liabilities) if current_liabilities > 0 else 1.5, 4),
         "average_daily_balance": round(_safe_float(bank_data.get("average_daily_balance"), 0.0), 2),

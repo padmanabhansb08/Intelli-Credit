@@ -1,4 +1,4 @@
-﻿export const WORKFLOW_INITIAL_INPUT_STORAGE_KEY = 'intelli.workflowInitialInput';
+export const WORKFLOW_INITIAL_INPUT_STORAGE_KEY = 'intelli.workflowInitialInput';
 export const INGESTION_SESSION_STORAGE_KEY = 'intelli.documentIngestion';
 
 export const DOCUMENT_KIND_CONFIG = {

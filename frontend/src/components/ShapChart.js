@@ -1,4 +1,4 @@
-﻿import { Bar, BarChart, Cell, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { Bar, BarChart, Cell, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 
 const impactIncreasesRisk = (impact) => {
   if (!impact) {
@@ -6,7 +6,7 @@ const impactIncreasesRisk = (impact) => {
   }
 
   const normalized = String(impact);
-  return normalized.includes('↑') || normalized.includes('â†‘') || normalized.toLowerCase().includes('increase');
+  return normalized.includes('?') || normalized.includes('↑') || normalized.toLowerCase().includes('increase');
 };
 
 function CustomTooltip({ active, payload }) {

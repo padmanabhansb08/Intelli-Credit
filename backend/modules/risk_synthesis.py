@@ -2,7 +2,10 @@
 Risk Synthesis Engine
 Combines all risk signals into a unified composite risk score and grade.
 """
-import numpy as np
+try:
+    import numpy as np
+except ImportError:
+    np = None
 from typing import Dict, Any
 
 

@@ -83,7 +83,7 @@ const buildNodeBlueprint = (type, position) => {
           promptTemplate: 'Extract entities from document.',
           confidenceThreshold: 85.0,
           extractedFields: [
-            { key: 'Applicant', value: 'ACME Corp' },
+            { key: 'Applicant', value: 'Sample Applicant' },
             { key: 'RequestedLimit', value: '250000' },
           ],
         },

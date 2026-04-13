@@ -1,4 +1,4 @@
-﻿import { useState } from 'react';
+import { useState } from 'react';
 import { Activity, Download, ShieldAlert, ShieldCheck, Target, ChevronDown, ChevronUp, ExternalLink, AlertTriangle, FileText } from 'lucide-react';
 import { Card, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -84,7 +84,7 @@ export default function AnalysisSummary({ result, onDownloadCam, isDownloadingCa
           <ul className="space-y-2">
             {decision.conditions.map((condition, index) => (
               <li key={index} className="flex gap-3 text-foreground font-medium">
-                <span className="text-warning mt-1 font-bold">•</span>
+                <span className="text-warning mt-1 font-bold">�</span>
                 {condition}
               </li>
             ))}

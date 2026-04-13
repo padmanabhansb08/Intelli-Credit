@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React from 'react';
 import { PanelBottomClose, PanelBottomOpen, Radio, WifiOff } from 'lucide-react';
@@ -67,7 +67,7 @@ export default function ExecutionPanel({
                 <div key={log.id} className="grid grid-cols-[148px_128px_1fr] gap-4 border-b border-slate-900/80 pb-2 last:border-b-0">
                   <span className="text-slate-500">{log.timestamp || 'pending'}</span>
                   <span className={`${levelTone[log.level] || levelTone.INFO} uppercase tracking-wide`}>
-                    {log.level} {log.nodeLabel ? `· ${log.nodeLabel}` : ''}
+                    {log.level} {log.nodeLabel ? `→ ${log.nodeLabel}` : ''}
                   </span>
                   <span className="text-slate-200">{log.message}</span>
                 </div>
@@ -79,4 +79,3 @@ export default function ExecutionPanel({
     </div>
   );
 }
-

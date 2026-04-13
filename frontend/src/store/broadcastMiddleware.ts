@@ -1,4 +1,6 @@
-import { StateCreator } from 'zustand';
+import { StateCreator, StoreApi, StoreMutatorIdentifier } from 'zustand';
+
+type SetState<T> = StoreApi<T>['setState'];
 
 export const broadcast = <T>(
     channelName: string,
@@ -6,6 +8,7 @@ export const broadcast = <T>(
 ): StateCreator<T> => (set, get, api) => {
     const isClient = typeof window !== 'undefined';
     let channel: BroadcastChannel | null = null;
+    let isSyncingFromRemote = false;
 
     if (isClient) {
         try {
@@ -16,12 +19,12 @@ export const broadcast = <T>(
     }
 
     // Intercept the native set function
-    const modifiedSet: typeof set = (partial: any, replace?: any, isRemoteSync?: boolean) => {
+    const modifiedSet: typeof set = (...args: any[]) => {
         // Apply state locally
-        set(partial, replace);
+        (set as any)(...args);
 
         // If it's a remote sync triggered by the network, do not bounce the event back out
-        if (isRemoteSync) return;
+        if (isSyncingFromRemote) return;
 
         if (channel) {
             const state = get();
@@ -37,10 +40,23 @@ export const broadcast = <T>(
     };
 
     // We patch api.setState as well in case components use useStore.setState() externally
-    const originalSetState = api.setState;
-    api.setState = (partial: any, replace?: any) => {
-        modifiedSet(partial as T, replace as boolean, false);
+    api.setState = (...args: any[]) => {
+        (modifiedSet as any)(...args);
     };
+
+    // Listen for remote sync events
+    if (channel) {
+        channel.onmessage = (event) => {
+            if (event.data?.type === 'intelli-credit/SYNC_STATE') {
+                isSyncingFromRemote = true;
+                try {
+                    (set as any)(event.data.payload, true);
+                } finally {
+                    isSyncingFromRemote = false;
+                }
+            }
+        };
+    }
 
     return config(modifiedSet, get, api);
 };

@@ -234,29 +234,42 @@ async def upload_document(
     analysis_id = analysis_id or str(uuid.uuid4())
     tenant_id = tenant["tenant_id"]
 
-    if doc_type == "financial_pdf":
-        extracted = parse_financial_pdf(content)
-    elif doc_type == "bank_csv":
-        extracted = parse_bank_statement_csv(content)
-    elif doc_type == "bureau_json":
-        try:
-            extracted = parse_bureau_json(json.loads(content.decode("utf-8")))
-        except Exception as exc:
-            raise HTTPException(status_code=400, detail=f"Invalid bureau JSON: {exc}") from exc
-    else:
-        raise HTTPException(status_code=400, detail="Invalid doc_type")
+    try:
+        if doc_type == "financial_pdf":
+            extracted = parse_financial_pdf(content)
+        elif doc_type == "bank_csv":
+            extracted = parse_bank_statement_csv(content)
+        elif doc_type == "bureau_json":
+            try:
+                extracted = parse_bureau_json(json.loads(content.decode("utf-8")))
+            except Exception as exc:
+                raise HTTPException(status_code=400, detail=f"Invalid bureau JSON: {exc}") from exc
+        else:
+            raise HTTPException(status_code=400, detail="Invalid doc_type")
+    except ValueError as e:
+        # Handle "unreadable" or "short document" errors from ingestion.py
+        raise HTTPException(status_code=400, detail={"error": str(e)})
+    except Exception as e:
+        logging.error(f"UPLOAD PARSE ERROR: {e}")
+        raise HTTPException(status_code=500, detail={"error": f"Failed to parse document: {str(e)}"})
 
-    session = await _ensure_session(db, tenant_id, analysis_id, status="UPLOADED")
-    raw = dict(session.raw_extracts) if session.raw_extracts else {}
-    raw[doc_type] = extracted
-    session.raw_extracts = raw
-    session.status = "UPLOADED"
-    await db.commit()
+    try:
+        session = await _ensure_session(db, tenant_id, analysis_id, status="UPLOADED")
+        raw = dict(session.raw_extracts) if session.raw_extracts else {}
+        raw[doc_type] = extracted
+        session.raw_extracts = raw
+        session.status = "UPLOADED"
+        await db.commit()
+    except Exception as e:
+        logging.error(f"DATABASE ERROR ON UPLOAD: {e}")
+        # Even if DB fails, return extracted data for demo continuity if possible
+        # but technically for standard flow, session must exist.
+        raise HTTPException(status_code=500, detail={"error": "Database error while saving session. Ensure Postgres is running."})
 
     return {
         "status": "success",
         "analysis_id": analysis_id,
-        "message": f"Successfully parsed and stored {file.filename} in datastore",
+        "message": f"Successfully parsed and stored {filename} in datastore",
         "extracted_data": extracted,
     }
 
@@ -441,6 +454,21 @@ async def run_full_analysis(
 async def get_all_analyses():
     """List all past analyses (from feature store)."""
     return {"analyses": list_analyses()}
+
+
+@router.get("/analyze/{analysis_id}")
+async def get_analysis(analysis_id: str, tenant: Dict = Depends(get_tenant), db: AsyncSession = Depends(get_async_db)):
+    """Fetch a completed analysis by ID."""
+    analysis = load_full_analysis(analysis_id)
+    if not analysis:
+        # Check database if not in feature store
+        result = await db.execute(select(AnalysisSession).filter_by(id=analysis_id, tenant_id=tenant["tenant_id"]))
+        session = result.scalar_one_or_none()
+        if session and session.full_result:
+            return session.full_result
+        raise HTTPException(status_code=404, detail="Analysis not found")
+        
+    return analysis
 
 
 @router.get("/metrics")

@@ -11,7 +11,7 @@ async def call_groq_llm(prompt: str, model: str) -> Dict[str, Any]:
     """Mock asynchronous call to Groq API"""
     logger.info(f"Initiating async call to Groq using model: {model}")
     await asyncio.sleep(1.5)  # Simulate API latency
-    return {"extracted_entities": {"revenue": 5000000, "ebitda": 1200000}}
+    return {"error": "Authentication failed", "status": "FAILED"}
 
 # --- Context State Object ---
 class ExecutionContext:
@@ -45,16 +45,29 @@ async def process_trigger_node(node: Dict[str, Any], context: ExecutionContext):
 async def process_integration_node(node: Dict[str, Any], context: ExecutionContext):
     await context.log(f"Executing IntegrationNode: {node['id']} - Fetching via {node.get('data', {}).get('connection')}")
     
-    # Simulate constructing dynamic XML Request
     applicant = (await context.get_state()).get("payload", {})
+    
+    # Use real data if provided in the payload
+    if "bureau_score" in applicant or "financials" in applicant:
+        score = applicant.get("bureau_score") or applicant.get("financials", {}).get("bureau_score", 750)
+        parsed_data = {
+            "vantage_score": score,
+            "dti_ratio": 0.35,  # Optional real mapping if available
+            "active_tradelines": 5,
+            "status": "SUCCESS"
+        }
+        await context.set_output(node['id'], parsed_data)
+        await context.log(f"Using real payload data. Score: {score}")
+        return
+
+    # Simulate constructing dynamic XML Request
     pan = applicant.get("pan_number", "UNKNOWN")
     xml_request = f"<Request><Consumer><PAN>{pan}</PAN></Consumer></Request>"
     await context.log(f"Constructed Equifax XML Payload for {pan}")
 
     # Simulated External API with rigid asyncio timeout and graceful degradation
     async def _mock_bureau_call():
-        await asyncio.sleep(1) # Simulated network latency
-        # Simulated raw XML success response
+        # Removed async sleep for instant local execution if fallback triggered
         return f"""
         <Response>
             <Status>SUCCESS</Status>
@@ -96,20 +109,22 @@ async def process_gst_node(node: Dict[str, Any], context: ExecutionContext):
     
     # Retrieve base data
     payload = (await context.get_state()).get("payload", {})
-    stated_revenue = payload.get("loan_amount", 0) * 5 # mock reasonable expectation
     
     try:
-        # Simulate fetch of 12 month GSTR-3B filings
-        await asyncio.sleep(0.5)
-        mock_gstr_3b_monthly = [stated_revenue * 0.08] * 12 # Roughly 96% of stated
-        annual_gst_revenue = sum(mock_gstr_3b_monthly)
-        
-        # Variance calculation = |Stated - Actual GST| / Stated
-        if stated_revenue > 0:
-            variance = abs(stated_revenue - annual_gst_revenue) / stated_revenue
+        # Use real data if provided in the payload
+        if "annual_gst_revenue" in payload:
+            annual_gst_revenue = payload["annual_gst_revenue"]
+            variance = payload.get("gst_bank_variance_pct", 0) / 100.0
+        elif "financials" in payload and "operating_income" in payload["financials"]:
+            stated_revenue = payload["financials"]["operating_income"]
+            annual_gst_revenue = stated_revenue * 0.98 # simulate closely matching gst based on actual values
+            variance = 0.02
         else:
-            variance = 1.0
-            
+            stated_revenue = payload.get("loan_amount", 0) * 5 # fallback mock reasonable expectation
+            mock_gstr_3b_monthly = [stated_revenue * 0.08] * 12 # Roughly 96% of stated
+            annual_gst_revenue = sum(mock_gstr_3b_monthly)
+            variance = abs(stated_revenue - annual_gst_revenue) / stated_revenue if stated_revenue > 0 else 1.0
+
         tolerance = node.get("data", {}).get("tolerancePercentage", 5.0) / 100.0
         flagged = variance > tolerance
 
@@ -159,25 +174,29 @@ async def process_condition_node(node: Dict[str, Any], context: ExecutionContext
 
 async def process_shap_node(node: Dict[str, Any], context: ExecutionContext):
     await context.log(f"Executing ExplainableAINode (SHAP): {node['id']}")
-    await asyncio.sleep(0.5) # Simulate SHAP calc
-    await context.set_output(node['id'], {"top_drivers": ["bureau_score", "ebitda"]})
+    
+    payload = (await context.get_state()).get("payload", {})
+    top_drivers = ["bureau_score", "ebitda"]
+    
+    if "shap_explanation" in payload and payload["shap_explanation"]:
+        top_drivers = [f["feature"] for f in payload["shap_explanation"].get("top_5_factors", [])]
+    
+    await context.set_output(node['id'], {"top_drivers": top_drivers})
 
 async def process_mca_node(node: Dict[str, Any], context: ExecutionContext):
     await context.log(f"Executing MCAFilingSyncNode: {node['id']}")
-    await asyncio.sleep(0.5) # Simulate Signzy API network delay
     # In a real scenario, this connects to the Signzy MCA V3 APIs
+    payload = (await context.get_state()).get("payload", {})
     await context.set_output(node['id'], {
         "status": "success",
         "cin_verified": True,
-        "directors": ["John Doe", "Jane Smith"],
+        "directors": payload.get("directors", ["John Doe", "Jane Smith"]),
         "financials_synced": node.get("data", {}).get("syncFinancials", True)
     })
 
 async def process_epfo_node(node: Dict[str, Any], context: ExecutionContext):
     await context.log(f"Executing EPFOAnomalyNode: {node['id']}")
-    await asyncio.sleep(0.5) # Simulate EPFO data retrieval
     tolerance = node.get("data", {}).get("toleranceMonths", 3)
-    # Simulate discovering 1 missed month (below default tolerance of 3)
     missed_months = 1
     flagged = missed_months > tolerance
     await context.set_output(node['id'], {

@@ -20,7 +20,7 @@ import { format } from 'date-fns';
 import ReactDiffViewer from 'react-diff-viewer-continued';
 import { motion, AnimatePresence } from 'framer-motion';
 
-const NEXT_PUBLIC_API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api';
+const NEXT_PUBLIC_API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8010/api';
 
 const STATUS_CONFIG = {
     PENDING: { icon: Clock, color: 'text-amber-600', bg: 'bg-amber-100', border: 'border-amber-200', label: 'Pending Review' },

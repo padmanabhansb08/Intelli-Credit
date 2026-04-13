@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/Card";
 
-const NEXT_PUBLIC_API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8006/api";
+const NEXT_PUBLIC_API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8010/api";
 
 export default function PolicyDashboard() {
   const router = useRouter();
@@ -49,7 +49,7 @@ export default function PolicyDashboard() {
     } catch (err) {
       console.error(err);
       if (err.message.includes("fetch")) {
-        setError("Unable to reach backend — is the server running on port 8000?");
+        setError("Unable to reach backend — is the server running on port 8010?");
       } else {
         setError(err.message);
       }
@@ -101,6 +101,11 @@ export default function PolicyDashboard() {
   return (
     <div className="flex flex-col gap-6 min-h-[calc(100vh-80px)] p-6 bg-background">
       {/* Header */}
+      <div className="flex items-center justify-between mb-4">
+        <Badge variant="outline" className="text-[10px] font-mono opacity-50">
+          API: {NEXT_PUBLIC_API_URL}
+        </Badge>
+      </div>
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-foreground flex items-center gap-3">

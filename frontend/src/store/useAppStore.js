@@ -8,7 +8,7 @@ const genId = (prefix = 'prop') => `${prefix}_${Date.now()}_${Math.random().toSt
 const SEED_PROPOSALS = [
   {
     id: 'prop_seed_1',
-    company: 'Acme Corp Ltd.',
+    company: 'Sample Corp 1',
     amount: '$1,500,000',
     status: 'Action Required',
     time: '2 hours ago',

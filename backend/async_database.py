@@ -16,11 +16,9 @@ from sqlalchemy.ext.asyncio import (
 )
 from sqlalchemy.orm import DeclarativeBase
 
+from core.config import settings
 
-ASYNC_DATABASE_URL = os.getenv(
-    "ASYNC_DATABASE_URL",
-    "postgresql+asyncpg://postgres:postgres@localhost:5432/intelli_credit",
-)
+ASYNC_DATABASE_URL = settings.ASYNC_DATABASE_URL
 
 async_engine = create_async_engine(
     ASYNC_DATABASE_URL,

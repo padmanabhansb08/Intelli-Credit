@@ -109,7 +109,7 @@ export default function SimulationGraph({
   const [activeAgentId, setActiveAgentId] = useState(null);
   const [interactionLog, setInteractionLog] = useState([]);
 
-  const baseUrl = apiUrl || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8006/api';
+  const baseUrl = apiUrl || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8010/api';
 
   // --- SSE Connection ---
   useEffect(() => {

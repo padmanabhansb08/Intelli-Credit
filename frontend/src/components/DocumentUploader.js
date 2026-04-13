@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { useDropzone } from 'react-dropzone';
@@ -387,7 +387,7 @@ export default function DocumentUploader({
                     </div>
                     <p className="text-xs text-slate-400 mt-2">
                       {document.analysisId ? `Analysis ${document.analysisId}` : 'Ready to ingest'}
-                      {document.status === 'complete' && document.extractedData ? ' • Databricks extraction complete' : ''}
+                      {document.status === 'complete' && document.extractedData ? ' � Databricks extraction complete' : ''}
                     </p>
                   </div>
 

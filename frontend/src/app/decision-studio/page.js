@@ -33,7 +33,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import NextLink from 'next/link';
 
-const NEXT_PUBLIC_API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8006/api';
+const NEXT_PUBLIC_API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8010/api';
 
 // ── Node type registry ──────────────────────────────────────────────────────
 

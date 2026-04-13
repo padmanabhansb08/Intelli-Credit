@@ -30,7 +30,7 @@ print("BACKEND: settings imported")
 print("BACKEND: Importing verify_firebase_token...")
 from security.auth import verify_firebase_token
 print("BACKEND: verify_firebase_token imported")
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 print("BACKEND: FastAPI imported")
 from fastapi.middleware.cors import CORSMiddleware
 print("BACKEND: CORSMiddleware imported")
@@ -43,13 +43,25 @@ app = FastAPI(
     version=settings.VERSION if hasattr(settings, 'VERSION') else "1.0.0"
 )
 
+# CORS Setup
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.ALLOWED_ORIGINS if hasattr(settings, 'ALLOWED_ORIGINS') else ["*"],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Custom Request Logging Middleware
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    origin = request.headers.get("origin")
+    method = request.method
+    url = str(request.url)
+    print(f"DEBUG: Incoming {method} request to {url} | Origin: {origin}")
+    response = await call_next(request)
+    print(f"DEBUG: Response status: {response.status_code}")
+    return response
 
 # --- Individual Router Imports ---
 def load_router(mod_path):
@@ -124,4 +136,4 @@ def api_health():
     return {"status": "ok", "mode": "rescue_api"}
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=settings.BACKEND_PORT)

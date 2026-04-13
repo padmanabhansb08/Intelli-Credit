@@ -14,7 +14,7 @@ import {
 import NextLink from 'next/link';
 import { formatDistanceToNow } from 'date-fns';
 
-const NEXT_PUBLIC_API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api';
+const NEXT_PUBLIC_API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8010/api';
 
 const STATUS_CONFIG = {
     PENDING: {

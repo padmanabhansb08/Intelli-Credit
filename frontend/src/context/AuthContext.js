@@ -23,6 +23,18 @@ export const AuthProvider = ({ children }) => {
 
   // 1. Initialize Firebase Auth State
   useEffect(() => {
+    if (!auth) {
+      console.warn("Firebase Auth not initialized. Using mocked session for hackathon preview.");
+      setUser({
+        email: 'demo@intellicredit.com',
+        uid: 'demo_user',
+        role: UserRole.ADMIN,
+        getIdToken: async () => 'mock_token_123'
+      });
+      setLoading(false);
+      return;
+    }
+
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
       setLoading(false);
